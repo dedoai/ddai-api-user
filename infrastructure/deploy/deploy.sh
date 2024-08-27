@@ -34,6 +34,11 @@ else
     action="CREATE"
 fi
 
+
+aws cloudformation deploy  --stack-name DDAIApiAuthorizer --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
+
+exit 0
+
 # Crea un nome univoco per il change set
 change_set_name="changeset-$(date +%Y%m%d%H%M%S)"
 
