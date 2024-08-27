@@ -5,7 +5,7 @@ FROM golang:1.20 AS builder
 WORKDIR /app
 
 # Copiamo i file del progetto nella directory di lavoro
-COPY . .
+COPY app/ .
 
 # Compiliamo l'applicazione Go per l'architettura di AWS Lambda
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main.go
