@@ -1,0 +1,5 @@
+BACKEND_API_URL=https://s3.us-east-1.amazonaws.com/www.dedoai.it/next/cache/api/home/
+REDIS_URL=dedoai-redis-staging-001.zacbow.0001.euw2.cache.amazonaws.com:6379
+REDIS_URL_READER=dedoai-redis-staging-ro.zacbow.ng.0001.euw2.cache.amazonaws.com:6379
+SQS_QUEUE=waiting-room-next
+
