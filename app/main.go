@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
