@@ -28,4 +28,4 @@ COPY --from=builder /app/main .
 RUN chmod +x main
 
 # Definiamo l'handler per la Lambda
-CMD ["main"]
+CMD ["./main"]
