@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  YourFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: main
+      Runtime: go1.x
+      Events:
+        UserRequest:
+          Type: Api
+          Properties:
+            Path: /profile/{username}
+            Method: get
+        NotificationsRequest:
+          Type: Api
+          Properties:
+            Path: /notifications
+            Method: get
+        DatasetsRequest:
+          Type: Api
+          Properties:
+            Path: /datasets
+            Method: get
+        C4DsRequest:
+          Type: Api
+          Properties:
+            Path: /c4ds
+            Method: get
