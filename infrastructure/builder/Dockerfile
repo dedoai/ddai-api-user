@@ -8,7 +8,8 @@ WORKDIR /app
 COPY app/ .
 
 # Compiliamo l'applicazione Go per l'architettura di AWS Lambda
-RUN GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main.go
+#RUN GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main.go
 
 # Creiamo una nuova immagine per il deployment
 FROM amazonlinux:2
