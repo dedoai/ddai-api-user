@@ -35,42 +35,5 @@ else
 fi
 
 
-aws cloudformation deploy  --stack-name DDAIApiAuthorizer --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation deploy  --stack-name DDAIApiUserLambda --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
 
-exit 0
-
-# Crea un nome univoco per il change set
-change_set_name="changeset-$(date +%Y%m%d%H%M%S)"
-
-echo "IMAGE_URI: $IMAGE_URI"
-
-# Crea il change set
-aws cloudformation create-change-set \
-    --stack-name DDAIApiAuthorizer \
-    --template-body file://./infrastructure/aws/cfn.yaml \
-    --parameters ParameterKey=EcrImageUri,ParameterValue=${IMAGE_URI} \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --change-set-name $change_set_name \
-    --change-set-type $action
-
-# Attendi che il change set sia creato
-echo "In attesa della creazione del change set..."
-aws cloudformation wait change-set-create-complete --stack-name DDAIApiAuthorizer --change-set-name $change_set_name
-
-if [ $? -ne 0 ]; then
-    echo "Errore nella creazione del change set."
-    exit 1
-fi
-
-echo "Change set creato con successo: $change_set_name"
-echo "------------------- ESECUZIONE DEL CHANGE SET ----------------"
-
-# Esegui il change set
-aws cloudformation execute-change-set --stack-name DDAIApiAuthorizer --change-set-name $change_set_name
-
-if [ $? -eq 0 ]; then
-    echo "Change set eseguito con successo."
-else
-    echo "Errore nell'esecuzione del change set."
-    exit 1
-fi
