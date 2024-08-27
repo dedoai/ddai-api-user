@@ -9,23 +9,23 @@ Resources:
       Handler: main
       Runtime: go1.x
       Events:
-        UserRequest:
+        UserProfile:
           Type: Api
           Properties:
-            Path: /profile/{username}
+            Path: /users/profile/{username}
             Method: get
-        NotificationsRequest:
+        UserNotifications:
           Type: Api
           Properties:
-            Path: /notifications
+            Path: /users/notifications
             Method: get
-        DatasetsRequest:
+        UserDatasets:
           Type: Api
           Properties:
-            Path: /datasets
+            Path: /users/datasets
             Method: get
-        C4DsRequest:
+        UserC4Ds:
           Type: Api
           Properties:
-            Path: /c4ds
+            Path: /users/c4ds
             Method: get
