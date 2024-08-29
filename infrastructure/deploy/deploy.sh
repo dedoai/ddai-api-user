@@ -34,5 +34,5 @@ else
     action="CREATE"
 fi
 
-aws cloudformation deploy  --stack-name DDAIApiUserLambda --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation update-stack  --stack-name DDAIApiUser --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
 
