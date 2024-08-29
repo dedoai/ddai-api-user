@@ -12,7 +12,7 @@ COPY app/ .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main.go
 
 # Creiamo una nuova immagine per il deployment
-FROM amazonlinux:2
+FROM public.ecr.aws/docker/library/alpine:3
 
 # Installiamo le dipendenze richieste da AWS Lambda (libc, etc.)
 RUN yum install -y \
