@@ -14,11 +14,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main
 # Creiamo una nuova immagine per il deployment
 FROM public.ecr.aws/docker/library/alpine:latest
 
-# Installiamo le dipendenze richieste da AWS Lambda (libc, etc.)
-# Usa apt-get invece di yum per installare pacchetti
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Usa apk invece di apt-get o yum per installare pacchetti su Alpine Linux
+RUN apk update && apk add --no-cache \
+    ca-certificates
 
 # Impostiamo la directory di lavoro per Lambda
 WORKDIR /app
