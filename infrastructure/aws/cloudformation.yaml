@@ -8,7 +8,7 @@ Resources:
     Properties:
       PackageType: Image
       FunctionName: ddai-api-user
-      Role: !GetAtt DDAIApiUserLambdaRole.Arn
+      Role: arn:aws:iam::381492109137:role/service-role/ddai-api-user-role-h5u16x88
       Code:
         ImageUri: !Ref 'EcrImageUri'
       Architectures:
