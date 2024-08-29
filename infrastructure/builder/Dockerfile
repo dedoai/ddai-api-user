@@ -1,5 +1,5 @@
 # Utilizziamo l'immagine ufficiale di Go per la fase di build
-FROM golang:1.20 AS builder
+FROM public.ecr.aws/docker/library/golang:1.20 AS builder
 
 # Impostiamo la directory di lavoro
 WORKDIR /app
