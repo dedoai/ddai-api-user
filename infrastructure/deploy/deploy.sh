@@ -23,7 +23,7 @@ cat ./infrastructure/aws/cfn.yaml
 echo "------------------- CREAZIONE DEL CHANGE SET ----------------"
 
 # Verifica se lo stack esiste già
-stack_status=$(aws cloudformation describe-stacks --stack-name DDAIApiAuthorizer --query 'Stacks[0].StackStatus' --output text 2>/dev/null)
+stack_status=$(aws cloudformation describe-stacks --stack-name DDAIApiUserLambda --query 'Stacks[0].StackStatus' --output text 2>/dev/null)
 
 # Se lo stack non esiste, crealo con un change set
 if [ $? -eq 0 ]; then
@@ -33,7 +33,6 @@ else
     echo "Lo stack non esiste, verrà creato."
     action="CREATE"
 fi
-
 
 aws cloudformation deploy  --stack-name DDAIApiUserLambda --template-file ./infrastructure/aws/cfn.yaml  --parameter-overrides EcrImageUri=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
 
