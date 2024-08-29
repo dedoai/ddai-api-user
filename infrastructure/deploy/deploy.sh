@@ -29,11 +29,20 @@ stack_status=$(aws cloudformation describe-stacks --stack-name DDAIApiUser --que
 if [ $? -eq 0 ]; then
     echo "Lo stack esiste già con lo stato: $stack_status"
     action="UPDATE"
+
+    aws cloudformation update-stack --stack-name DDAIApiUser --template-body ./infrastructure/aws/cfn.yaml \
+	--parameters ParameterKey=EcrImageUri,ParameterValue=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
+
 else
     echo "Lo stack non esiste, verrà creato."
     action="CREATE"
+    aws cloudformation deploy \
+	  --stack-name DDAIApiUser \
+	  --template-file ./infrastructure/aws/cfn.yaml \
+	  --parameter-overrides EcrImageUri=${IMAGE_URI} \
+	  --capabilities CAPABILITY_NAMED_IAM
+
 fi
 
-aws cloudformation update-stack --stack-name DDAIApiUser --template-body ./infrastructure/aws/cfn.yaml \
-  --parameters ParameterKey=EcrImageUri,ParameterValue=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
+
 
