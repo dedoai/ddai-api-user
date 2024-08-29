@@ -3,6 +3,10 @@ Parameters:
     Description: ECR image URI of TicketsmsHomeJsonDev
     Type: String
 Resources:
+  DDAIApiUserECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ddai-api-user
   DDAIApiUserRepo:
     Type: AWS::CodeCommit::Repository
     Properties:
