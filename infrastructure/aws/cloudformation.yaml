@@ -1,14 +1,96 @@
 Parameters:
   EcrImageUri:
-    Description: ECR image URI of ddai-api-user
+    Description: ECR image URI of TicketsmsHomeJsonDev
     Type: String
 Resources:
+  DDAIApiUserECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ddai-api-user
+  DDAIApiUserRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: ddai-api-user
+#      RepositoryTrigger:
+#        Branches:
+#          - main
+#        DestinationArn: !GetAtt DDAIApiUserBuild.Arn
+#        Name: cicd
+  DDAIApiUserBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: ddai-api-user
+      Environment:
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+      ServiceRole: !GetAtt DDAIApiUserRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+#      SourceVersion: main
+      Source:
+        Type: CODECOMMIT
+        Location: !GetAtt DDAIApiUserRepo.Name
+        GitCloneDepth: 1
+        SourceIdentifier: main
+#      Triggers:
+#        BuildType: BUILD_BATCH
+#        Webhook: false
+  DDAIApiUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ddai-api-user-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+      Policies:
+        - PolicyName: ddai-api-userECRPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: "*"
+        - PolicyName: ddai-api-userCloudFormationPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:ListStackResources
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                Resource: "*"
   DDAIApiUserLambda:
     Type: AWS::Lambda::Function
     Properties:
       PackageType: Image
       FunctionName: ddai-api-user
-      Role: arn:aws:iam::381492109137:role/service-role/ddai-api-user-role-h5u16x88
+      Role: !GetAtt DDAIApiUserLambdaRole.Arn
       Code:
         ImageUri: !Ref 'EcrImageUri'
       Architectures:
@@ -25,3 +107,24 @@ Resources:
         - subnet-0d2c8172d8a85a69f
         - subnet-0e05f00d80886caae
         - subnet-03b2a57b732842a2d
+      Environment:
+        Variables:
+          BACKEND_API_URL: https://dedoaibackend/
+          REDIS_URL: redis://rediswriter:3672
+          REDIS_URL_READER: redis://redisreader:3672
+          SQS_QUEUE: waiting-room-dev
+  DDAIApiUserLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ddai-api-user-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
