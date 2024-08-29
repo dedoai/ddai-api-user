@@ -156,6 +156,7 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 		FirstName string `json:"firstName"`
 		LastName  string `json:"lastName"`
 		Phone     string `json:"phone"`
+		Password  string `json:"password"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &userData)
 	if err != nil {
@@ -233,6 +234,7 @@ func createKeycloakUser(accessToken string, userData struct {
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
 	Phone     string `json:"phone"`
+	Password  string `json:"password"`
 }) (string, error) {
 	realm := os.Getenv("KEYCLOAK_REALM")
 
@@ -245,6 +247,13 @@ func createKeycloakUser(accessToken string, userData struct {
 			"phone": {userData.Phone},
 		},
 		"enabled": true,
+		"credentials": []map[string]interface{}{
+			{
+				"type":      "password",
+				"value":     userData.Password,
+				"temporary": false,
+			},
+		},
 	}
 	payloadBytes, err := json.Marshal(userPayload)
 	if err != nil {
