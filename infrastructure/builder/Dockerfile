@@ -15,9 +15,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main main
 FROM public.ecr.aws/docker/library/alpine:latest
 
 # Installiamo le dipendenze richieste da AWS Lambda (libc, etc.)
-RUN yum install -y \
+# Usa apt-get invece di yum per installare pacchetti
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    && yum clean all
+    && rm -rf /var/lib/apt/lists/*
 
 # Impostiamo la directory di lavoro per Lambda
 WORKDIR /app
