@@ -22,11 +22,11 @@ cat ./infrastructure/aws/cfn.yaml
 
 echo "------------------- CREAZIONE DEL CHANGE SET ----------------"
 
-echo "Validate template"
-aws cloudformation validate-template --template-body file://infrastructure/aws/cfn.yaml
+#echo "Validate template"
+#aws cloudformation validate-template --template-body file://infrastructure/aws/cfn.yaml
 
 # Verifica se lo stack esiste già
-stack_status=$(aws cloudformation describe-stacks --stack-name DDAIApiUser --query 'Stacks[0].StackStatus' --output text 2>/dev/null)
+#stack_status=$(aws cloudformation describe-stacks --stack-name DDAIApiUser --query 'Stacks[0].StackStatus' --output text 2>/dev/null)
 
 # Se lo stack non esiste, crealo con un change set
 if [ $? -eq 0 ]; then
