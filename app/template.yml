@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-
 Resources:
   YourFunction:
     Type: AWS::Serverless::Function
@@ -9,23 +8,26 @@ Resources:
       Handler: main
       Runtime: go1.x
       Events:
-        UserProfile:
+        LoginRequest:
           Type: Api
           Properties:
-            Path: /users/profile/{username}
-            Method: get
-        UserNotifications:
+            Path: /login
+            Method: post
+        RegisterRequest:
           Type: Api
           Properties:
-            Path: /users/notifications
-            Method: get
-        UserDatasets:
+            Path: /register
+            Method: post
+        ProfileRequest:
           Type: Api
           Properties:
-            Path: /users/datasets
+            Path: /profile/{username+}
             Method: get
-        UserC4Ds:
-          Type: Api
-          Properties:
-            Path: /users/c4ds
-            Method: get
+      Environment:
+        Variables:
+          CLIENT_SECRET: CLIENTHERE
+          KEYCLOAK_ADMIN_USERNAME: USERNAME
+          KEYCLOAK_ADMIN_PASSWORD: PASSWORD
+          KEYCLOAK_REALM: master
+    Metadata:
+      SamResourceId: YourFunction
