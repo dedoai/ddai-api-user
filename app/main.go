@@ -239,7 +239,7 @@ func createKeycloakUser(accessToken string, userData struct {
 	realm := os.Getenv("KEYCLOAK_REALM")
 
 	userPayload := map[string]interface{}{
-		"username":  userData.Username,
+		"username":  userData.Email,
 		"email":     userData.Email,
 		"firstName": userData.FirstName,
 		"lastName":  userData.LastName,
