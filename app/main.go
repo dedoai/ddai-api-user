@@ -24,9 +24,9 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return handleGetUserProfile(request)
 		}
 	case "POST":
-		if request.Path == "/v1/auth/signin" {
+		if request.Path == "/auth/signin" {
 			return handleLogin(request)
-		} else if request.Path == "/v1/auth/signup" {
+		} else if request.Path == "/auth/signup" {
 			return handleRegister(request)
 		}
 	default:
