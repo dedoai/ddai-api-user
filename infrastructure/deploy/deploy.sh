@@ -33,7 +33,7 @@ if [ $? -eq 0 ]; then
     echo "Lo stack esiste già con lo stato: $stack_status"
     action="UPDATE"
 
-    aws cloudformation update-stack --stack-name DDAIApiAccount --template-body ./infrastructure/aws/cfn.yaml \
+    aws cloudformation update-stack --stack-name DDAIApiAccount --template-body file://infrastructure/aws/cfn.yaml \
 	--parameters ParameterKey=EcrImageUri,ParameterValue=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
 
 else

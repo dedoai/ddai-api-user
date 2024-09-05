@@ -15,7 +15,7 @@ Resources:
       Architectures:
         - x86_64
       MemorySize: 1024
-      Timeout: 2
+      Timeout: 10
       VpcConfig:
         SecurityGroupIds:
           - sg-0cccd601e3bbf2fa1
@@ -26,4 +26,3 @@ Resources:
           - subnet-0d2c8172d8a85a69f
           - subnet-0e05f00d80886caae
           - subnet-03b2a57b732842a2d
-
