@@ -18,7 +18,7 @@ import (
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	switch request.HTTPMethod {
 	case "GET":
-		if strings.HasPrefix(request.Path, "/profile/") {
+		if strings.HasPrefix(request.Path, "/account/") {
 			return handleGetUserProfile(request)
 		}
 	case "POST":
