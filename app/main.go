@@ -41,7 +41,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 }
 
 func handleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	username := strings.TrimPrefix(request.Path, "/profile/")
+	username := strings.TrimPrefix(request.Path, "/account/")
 	if username == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: 400,
