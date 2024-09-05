@@ -140,6 +140,8 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		}, nil
 	}
 
+	fmt.Printf("Received response: %s\n", string(body))
+
 	var tokenResponse struct {
 		AccessToken string `json:"access_token"`
 	}
