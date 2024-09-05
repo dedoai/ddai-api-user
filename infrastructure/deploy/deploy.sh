@@ -33,19 +33,19 @@ if [ $? -eq 0 ]; then
     echo "Lo stack esiste già con lo stato: $stack_status"
     action="UPDATE"
     aws cloudformation deploy \
-	  --stack-name DDAIApiUser \
+	  --stack-name DDAIApiAccount \
 	  --template-file ./infrastructure/aws/cfn.yaml \
 	  --parameter-overrides EcrImageUri=${IMAGE_URI} \
 	  --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
 
-#    aws cloudformation update-stack --stack-name DDAIApiUser --template-body ./infrastructure/aws/cfn.yaml \
+#    aws cloudformation update-stack --stack-name DDAIApiAccount --template-body ./infrastructure/aws/cfn.yaml \
 #	--parameters ParameterKey=EcrImageUri,ParameterValue=${IMAGE_URI}  --capabilities CAPABILITY_NAMED_IAM
 
 else
     echo "Lo stack non esiste, verrà creato."
     action="CREATE"
     aws cloudformation deploy \
-	  --stack-name DDAIApiUser \
+	  --stack-name DDAIApiAccount \
 	  --template-file ./infrastructure/aws/cfn.yaml \
 	  --parameter-overrides EcrImageUri=${IMAGE_URI} \
 	  --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset

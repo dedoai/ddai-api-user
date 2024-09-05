@@ -8,8 +8,8 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       PackageType: Image
-      FunctionName: ddai-api-user
-      Role: arn:aws:iam::381492109137:role/service-role/ddai-api-user-role-h5u16x88
+      FunctionName: ddai-api-account
+      Role: arn:aws:iam::381492109137:role/service-role/ddai-api-account-role
       Code:
         ImageUri: !Ref EcrImageUri
       Architectures:
