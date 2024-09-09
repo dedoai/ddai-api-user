@@ -17,7 +17,7 @@ import (
 )
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	fmt.Printf("Received request: %+v\n", request)
+	// fmt.Printf("Received request: %+v\n", request)
 
 	switch request.HTTPMethod {
 	case "GET":
@@ -144,8 +144,6 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		}, nil
 	}
 
-	fmt.Printf("Received response: %s\n", string(body))
-
 	var tokenResponse struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -185,7 +183,6 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		}, nil
 	}
 
-	fmt.Printf("Login successful, access token: %s\n", tokenResponse.AccessToken)
 	return respondWithJSON(map[string]string{
 		"status":       "success",
 		"access_token": tokenResponse.AccessToken,
@@ -372,8 +369,6 @@ func createKeycloakUser(accessToken string, otpSecret string, userData struct {
 }
 
 func getUserByEmail(accessToken, email string) (map[string]interface{}, error) {
-	fmt.Printf("Getting user by email: %s\n", email, accessToken)
-
 	realm := os.Getenv("KEYCLOAK_REALM")
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://sso.dev.dedoai.org/admin/realms/%s/users?email=%s", realm, url.QueryEscape(email)), nil)
