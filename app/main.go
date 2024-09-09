@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/pquerna/otp/totp"
 )
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -65,7 +66,7 @@ func handleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGate
 		}, nil
 	}
 
-	user, err := getUserByUsername(accessToken, username)
+	user, err := getUserByEmail(accessToken, username)
 	if err != nil {
 		fmt.Printf("Failed to get user: %v\n", err)
 		return events.APIGatewayProxyResponse{
@@ -92,6 +93,7 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 	var credentials struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		OTPToken string `json:"otp_token"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &credentials)
 	if err != nil {
@@ -156,6 +158,33 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		}, nil
 	}
 
+	if credentials.OTPToken == "" {
+		fmt.Println("OTP token is missing")
+		return events.APIGatewayProxyResponse{
+			StatusCode: 400,
+			Body:       `{"error": "OTP token is missing"}`,
+		}, nil
+	}
+
+	user, err := getUserByEmail(tokenResponse.AccessToken, credentials.Username)
+	if err != nil {
+		fmt.Printf("Failed to get user: %v\n", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       `{"error": "Failed to get user"}`,
+		}, nil
+	}
+
+	otpSecret := user["attributes"].(map[string]interface{})["otp_secret"].([]interface{})[0].(string)
+	valid := totp.Validate(credentials.OTPToken, otpSecret)
+	if !valid {
+		fmt.Println("Invalid OTP token")
+		return events.APIGatewayProxyResponse{
+			StatusCode: 401,
+			Body:       `{"error": "Invalid OTP token"}`,
+		}, nil
+	}
+
 	fmt.Printf("Login successful, access token: %s\n", tokenResponse.AccessToken)
 	return respondWithJSON(map[string]string{
 		"status":       "success",
@@ -200,7 +229,19 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 		}, nil
 	}
 
-	userID, err := createKeycloakUser(accessToken, userData)
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "Your App Name",
+		AccountName: userData.Email,
+	})
+	if err != nil {
+		fmt.Printf("Failed to generate OTP secret: %v\n", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       `{"error": "Failed to generate OTP secret"}`,
+		}, nil
+	}
+
+	userID, err := createKeycloakUser(accessToken, key.Secret(), userData)
 	if err != nil {
 		fmt.Printf("Failed to create user: %v\n", err)
 		return events.APIGatewayProxyResponse{
@@ -210,9 +251,11 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 	}
 
 	fmt.Printf("User created successfully, user ID: %s\n", userID)
-	return respondWithJSON(map[string]string{
-		"status":  "success",
-		"user_id": userID,
+	return respondWithJSON(map[string]interface{}{
+		"status":     "success",
+		"user_id":    userID,
+		"otp_url":    key.URL(),
+		"otp_secret": key.Secret(),
 	}, 201)
 }
 
@@ -263,7 +306,7 @@ func getKeycloakAdminToken() (string, error) {
 	return tokenResponse.AccessToken, nil
 }
 
-func createKeycloakUser(accessToken string, userData struct {
+func createKeycloakUser(accessToken string, otpSecret string, userData struct {
 	Username  string `json:"username"`
 	Email     string `json:"email"`
 	FirstName string `json:"firstName"`
@@ -281,7 +324,8 @@ func createKeycloakUser(accessToken string, userData struct {
 		"firstName": userData.FirstName,
 		"lastName":  userData.LastName,
 		"attributes": map[string][]string{
-			"phone": {userData.Phone},
+			"phone":      {userData.Phone},
+			"otp_secret": {otpSecret},
 		},
 		"enabled": true,
 		"credentials": []map[string]interface{}{
@@ -327,12 +371,12 @@ func createKeycloakUser(accessToken string, userData struct {
 	return userID, nil
 }
 
-func getUserByUsername(accessToken, username string) (map[string]interface{}, error) {
-	fmt.Printf("Getting user by username: %s\n", username)
+func getUserByEmail(accessToken, email string) (map[string]interface{}, error) {
+	fmt.Printf("Getting user by email: %s\n", email, accessToken)
 
 	realm := os.Getenv("KEYCLOAK_REALM")
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://sso.dev.dedoai.org/admin/realms/%s/users?username=%s", realm, url.QueryEscape(username)), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://sso.dev.dedoai.org/admin/realms/%s/users?email=%s", realm, url.QueryEscape(email)), nil)
 	if err != nil {
 		fmt.Printf("Failed to create request: %v\n", err)
 		return nil, err
@@ -347,21 +391,26 @@ func getUserByUsername(accessToken, username string) (map[string]interface{}, er
 	}
 	defer resp.Body.Close()
 
+	fmt.Printf("Response Status Code: %d\n", resp.StatusCode)
+	fmt.Printf("Response Headers: %v\n", resp.Header)
+
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Printf("Response Body: %s\n", string(body))
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		fmt.Printf("Failed to get user, status code: %d, response: %s\n", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("failed to get user, status code: %d, response: %s", resp.StatusCode, string(body))
 	}
 
 	var users []map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&users)
+	err = json.Unmarshal(body, &users)
 	if err != nil {
 		fmt.Printf("Failed to decode user response: %v\n", err)
 		return nil, err
 	}
 
 	if len(users) == 0 {
-		fmt.Printf("User not found: %s\n", username)
+		fmt.Printf("User not found: %s\n", email)
 		return nil, fmt.Errorf("user not found")
 	}
 
