@@ -381,7 +381,11 @@ func respondWithJSON(data interface{}, statusCode int) (events.APIGatewayProxyRe
 	return events.APIGatewayProxyResponse{
 		StatusCode: statusCode,
 		Headers: map[string]string{
-			"Content-Type": "application/json",
+			"Content-Type":                     "application/json",
+			"Access-Control-Allow-Origin":      "*",
+			"Access-Control-Allow-Methods":     "GET,POST,OPTIONS",
+			"Access-Control-Allow-Headers":     "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+			"Access-Control-Allow-Credentials": "true",
 		},
 		Body: string(body),
 	}, nil
