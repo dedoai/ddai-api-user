@@ -101,7 +101,6 @@ func handleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGate
 }
 
 func handleResetPassword(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	fmt.Println("SAS")
 	var resetData struct {
 		Email       string `json:"email"`
 		NewPassword string `json:"new_password"`
@@ -145,7 +144,6 @@ func handleResetPassword(request events.APIGatewayProxyRequest) (events.APIGatew
 	}
 
 	userID := *users[0].ID
-	fmt.Println("ID", userID, users)
 	err = client.SetPassword(
 		context.Background(),
 		token.AccessToken,
