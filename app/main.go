@@ -40,6 +40,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return handleLogin(request)
 		} else if request.Path == "/v1/auth/signup" {
 			return handleRegister(request)
+		} else if request.Path == "/v1/auth/reset-password" {
+			return handleResetPassword(request)
 		}
 	case "OPTIONS":
 		return respondWithJSON(nil, 200)
@@ -98,9 +100,75 @@ func handleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGate
 	return respondWithJSON(users[0], 200)
 }
 
+func handleResetPassword(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	fmt.Println("SAS")
+	var resetData struct {
+		Email       string `json:"email"`
+		NewPassword string `json:"new_password"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &resetData)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 400,
+			Body:       `{"error": "Invalid request body"}`,
+		}, nil
+	}
+
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       `{"error": "Failed to get admin token"}`,
+		}, nil
+	}
+
+	users, err := client.GetUsers(
+		context.Background(),
+		token.AccessToken,
+		realm,
+		gocloak.GetUsersParams{
+			Email: gocloak.StringP(resetData.Email),
+		},
+	)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error": "Failed to get user: %v"}`, err.Error()),
+		}, nil
+	}
+
+	if len(users) == 0 {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 404,
+			Body:       `{"error": "User not found"}`,
+		}, nil
+	}
+
+	userID := *users[0].ID
+	fmt.Println("ID", userID, users)
+	err = client.SetPassword(
+		context.Background(),
+		token.AccessToken,
+		userID,
+		realm,
+		resetData.NewPassword,
+		false,
+	)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error": "Failed to reset password: %v"}`, err.Error()),
+		}, nil
+	}
+
+	return respondWithJSON(map[string]string{
+		"status": "success",
+	}, 200)
+}
+
 func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var credentials struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 		OTPToken string `json:"otp_token"`
 	}
@@ -117,7 +185,7 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		clientID,
 		clientSecret,
 		realm,
-		credentials.Username,
+		credentials.Email,
 		credentials.Password,
 	)
 	if err != nil {
@@ -187,12 +255,9 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 
 func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var userData struct {
-		Username  string `json:"username"`
-		Email     string `json:"email"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
-		Phone     string `json:"phone"`
-		Password  string `json:"password"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &userData)
 	if err != nil {
@@ -222,11 +287,8 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 	}
 
 	user := gocloak.User{
-		Username:  gocloak.StringP(userData.Email),
-		Email:     gocloak.StringP(userData.Email),
-		FirstName: gocloak.StringP(userData.FirstName),
-		LastName:  gocloak.StringP(userData.LastName),
-		Enabled:   gocloak.BoolP(true),
+		Email:   gocloak.StringP(userData.Email),
+		Enabled: gocloak.BoolP(true),
 		Attributes: &map[string][]string{
 			"phone":      {userData.Phone},
 			"otp_secret": {key.Secret()},
