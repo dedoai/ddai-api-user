@@ -29,6 +29,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		} else if request.Path == "/v1/auth/signup" {
 			return handleRegister(request)
 		}
+	case "OPTIONS":
+		return respondWithJSON(nil, 200)
 	default:
 		return events.APIGatewayProxyResponse{
 			StatusCode: 404,
