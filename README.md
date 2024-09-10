@@ -1,64 +1,175 @@
-Welcome to the AWS CodeStar sample web application
-==================================================
 
-This sample code helps get you started with a simple Node.js web service deployed by AWS CloudFormation to AWS Lambda and Amazon API Gateway.
+# ddai-api-user
 
-What's Here
------------
+![Go](https://img.shields.io/badge/Go-1.XX-blue)
+![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-yellow)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-This sample includes:
+**dedoAI** - API User Management Service
 
-* README.md - this file
-* buildspec.yml - this file is used by AWS CodeBuild to package your
-  application for deployment to AWS Lambda
-* index.js - this file contains the sample Node.js code for the web service
-* template.yml - this file contains the AWS Serverless Application Model (AWS SAM) used
-  by AWS CloudFormation to deploy your application to AWS Lambda and Amazon API
-  Gateway.
-* tests/ - this directory contains unit tests for your application
-* template-configuration.json - this file contains the project ARN with placeholders used for tagging resources with the project ID
+---
 
-What Do I Do Next?
-------------------
+## Overview
 
-If you have checked out a local copy of your repository you can start making
-changes to the sample code.  We suggest making a small change to index.js first,
-so you can see how changes pushed to your project's repository are automatically
-picked up by your project pipeline and deployed to AWS Lambda and Amazon API Gateway.
-(You can watch the pipeline progress on your AWS CodeStar project dashboard.)
-Once you've seen how that works, start developing your own code, and have fun!
+This repository contains the `ddai-api-user` service, an AWS Lambda function developed in **Go** that exposes a set of CRUD APIs for user management and profile handling. This microservice is designed to efficiently manage user data, enabling seamless integration into various applications requiring user profile functionalities.
 
-To run your tests locally, go to the root directory of the
-sample code and run the `npm test` command, which
-AWS CodeBuild also runs through your `buildspec.yml` file.
+---
 
-To test your new code during the release process, modify the existing tests or
-add tests to the tests directory. AWS CodeBuild will run the tests during the
-build stage of your project pipeline. You can find the test results
-in the AWS CodeBuild console.
+## Features
 
-Learn more about AWS CodeBuild and how it builds and tests your application here:
-https://docs.aws.amazon.com/codebuild/latest/userguide/concepts.html
+- **User CRUD Operations**: Create, Read, Update, and Delete users.
+- **Profile Management**: Handles detailed profile management for users.
+- **Scalable Architecture**: Built on AWS Lambda to ensure scalability and cost-effectiveness.
+- **Written in Go**: Efficient and performant backend logic.
+- **Serverless Deployment**: Easily deployable as a serverless function using AWS services.
 
-Learn more about AWS Serverless Application Model (AWS SAM) and how it works here:
-https://github.com/awslabs/serverless-application-model/blob/master/HOWTO.md
+---
 
-AWS Lambda Developer Guide:
-https://docs.aws.amazon.com/lambda/latest/dg/deploying-lambda-apps.html
+## Technologies
 
-Learn more about AWS CodeStar by reading the user guide, and post questions and
-comments about AWS CodeStar on our forum.
+- **Go**: The service is implemented in Go for high performance and scalability.
+- **AWS Lambda**: A serverless platform for running backend code without managing infrastructure.
+- **API Gateway**: Exposes the Lambda functions as RESTful APIs.
+- **DynamoDB (Optional)**: Can be integrated for storing user profiles.
 
-User Guide: https://docs.aws.amazon.com/codestar/latest/userguide/welcome.html
+---
 
-Forum: https://forums.aws.amazon.com/forum.jspa?forumID=248
+## Getting Started
 
-What Should I Do Before Running My Project in Production?
-------------------
+### Prerequisites
 
-AWS recommends you review the security best practices recommended by the framework
-author of your selected sample application before running it in production. You
-should also regularly review and apply any available patches or associated security
-advisories for dependencies used within your application. 
+Before you start, ensure you have the following tools installed:
 
-Best Practices: https://docs.aws.amazon.com/codestar/latest/userguide/best-practices.html?icmpid=docs_acs_rm_sec
+- **Go** (version 1.XX or higher)
+- **AWS CLI**: To interact with AWS services.
+- **SAM CLI**: AWS Serverless Application Model for local testing and deployment.
+- **Docker** (optional): For local Lambda testing.
+
+### Setup
+
+1. Clone this repository:
+
+    ```bash
+    git clone https://github.com/dedoAI/ddai-api-user.git
+    cd ddai-api-user
+    ```
+
+2. Install dependencies:
+
+    ```bash
+    go mod download
+    ```
+
+3. Set up your AWS environment (for local testing/deployment):
+
+    ```bash
+    aws configure
+    ```
+
+4. Use AWS SAM for local testing:
+
+    ```bash
+    sam local start-api
+    ```
+
+    You can now access the API locally at `http://localhost:3000`.
+
+---
+
+## API Endpoints
+
+The following APIs are exposed for managing users:
+
+| Method | Endpoint                | Description           |
+|--------|-------------------------|-----------------------|
+| GET    | `/users`                | Fetch all users       |
+| GET    | `/users/{id}`           | Fetch a specific user |
+| POST   | `/users`                | Create a new user     |
+| PUT    | `/users/{id}`           | Update user details   |
+| DELETE | `/users/{id}`           | Delete a user         |
+
+---
+
+## Deployment
+
+To deploy the service to AWS, you can use the AWS SAM CLI:
+
+1. Build the application:
+
+    ```bash
+    sam build
+    ```
+
+2. Deploy the application:
+
+    ```bash
+    sam deploy --guided
+    ```
+
+    Follow the prompts to specify your AWS region, stack name, and other settings.
+
+---
+
+## Configuration
+
+The service can be configured through the `template.yaml` file, which defines the Lambda function, its API Gateway, and any other AWS resources required for the deployment.
+
+### Example `template.yaml`
+
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  ApiUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: main
+      Runtime: go1.x
+      Environment:
+        Variables:
+          TABLE_NAME: UserTable
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: any
+```
+
+Modify this file as needed before deploying to your AWS environment.
+
+---
+
+## Testing
+
+Unit tests can be run using the Go testing framework. Simply run:
+
+```bash
+go test ./...
+```
+
+You can also test the Lambda function locally using AWS SAM with:
+
+```bash
+sam local invoke ApiUserFunction
+```
+
+---
+
+## Contributing
+
+We welcome contributions! Please fork this repository, create a feature branch, and submit a pull request.
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Contact
+
+For further questions or support, please reach out to the **dedoAI** team:
+
+- **Email**: support@dedoai.org
+- **Website**: [dedoai.org](https://www.dedoai.org)
