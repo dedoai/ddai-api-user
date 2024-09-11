@@ -45,7 +45,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		if request.Path == "/v1/auth/signin" {
 			return handleLogin(request)
 		} else if request.Path == "/v1/auth/signup" {
-			return handleRegister(request)
+			return handleSignup(request)
 		} else if request.Path == "/v1/auth/reset-password" {
 			return handleResetPassword(request)
 		} else if request.Path == "/v1/auth/otp/email" {
@@ -74,7 +74,36 @@ func handleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProx
 
 	otpToken := generateOTP(6)
 
-	err := saveOTPInKeycloak(email, otpToken)
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to login as admin"}, 500)
+	}
+
+	users, err := client.GetUsers(context.Background(), token.AccessToken, realm, gocloak.GetUsersParams{
+		Email: gocloak.StringP(email),
+	})
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to get user by email"}, 500)
+	}
+
+	var userID string
+	if len(users) == 0 {
+		user := gocloak.User{
+			Email:   gocloak.StringP(email),
+			Enabled: gocloak.BoolP(true),
+			Attributes: &map[string][]string{
+				"draft": {"true"},
+			},
+		}
+		userID, err = client.CreateUser(context.Background(), token.AccessToken, realm, user)
+		if err != nil {
+			return respondWithJSON(map[string]string{"error": "Failed to create user"}, 500)
+		}
+	} else {
+		userID = *users[0].ID
+	}
+
+	err = saveOTPInKeycloak(email, otpToken, userID)
 	if err != nil {
 		return respondWithJSON(map[string]string{"error": "Failed to save OTP in Keycloak"}, 500)
 	}
@@ -94,7 +123,7 @@ func handleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayPr
 		return respondWithJSON(map[string]string{"error": "Missing email or otp_token parameter"}, 400)
 	}
 
-	savedOTPToken, err := getOTPFromKeycloak(email)
+	savedOTPToken, userID, err := getOTPFromKeycloak(email)
 	if err != nil {
 		return respondWithJSON(map[string]string{"error": "Failed to retrieve OTP from Keycloak"}, 500)
 	}
@@ -103,7 +132,17 @@ func handleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayPr
 		return respondWithJSON(map[string]string{"error": "Invalid OTP token"}, 400)
 	}
 
-	err = removeOTPFromKeycloak(email)
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "failed to login as admin"}, 400)
+	}
+
+	err = updateUserAttribute(token, userID, "validated_mail_otp", "true")
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to update user attribute"}, 500)
+	}
+
+	err = removeOTPFromKeycloak(userID)
 	if err != nil {
 		return respondWithJSON(map[string]string{"error": "Failed to remove OTP from Keycloak"}, 500)
 	}
@@ -121,33 +160,80 @@ func generateOTP(length int) string {
 	return string(otp)
 }
 
-func saveOTPInKeycloak(email, otpToken string) error {
+func saveOTPInKeycloak(email, otpToken, userID string) error {
 	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
 	if err != nil {
 		return fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "mail_otp", otpToken)
+	if err != nil {
+		return fmt.Errorf("failed to update user attributes: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "validated_mail_otp", "false")
+	if err != nil {
+		return fmt.Errorf("failed to update user attributes: %v", err)
+	}
+
+	return nil
+}
+
+func getOTPFromKeycloak(email string) (string, string, error) {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to login as admin: %v", err)
 	}
 
 	users, err := client.GetUsers(context.Background(), token.AccessToken, realm, gocloak.GetUsersParams{
 		Email: gocloak.StringP(email),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get user by email: %v", err)
+		return "", "", fmt.Errorf("failed to get user by email: %v", err)
 	}
 
 	if len(users) == 0 {
-		return fmt.Errorf("user not found with email: %s", email)
+		return "", "", fmt.Errorf("user not found with email: %s", email)
 	}
 
-	user := users[0]
-	userID := *user.ID
+	attributes := *users[0].Attributes
+	if otpToken, ok := attributes["mail_otp"]; ok && len(otpToken) > 0 {
+		return otpToken[0], *users[0].ID, nil
+	}
+
+	return "", "", fmt.Errorf("otp token not found for email: %s", email)
+}
+
+func removeOTPFromKeycloak(userID string) error {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "mail_otp", "")
+	if err != nil {
+		return fmt.Errorf("failed to remove otp token from user attributes: %v", err)
+	}
+
+	return nil
+}
+
+func updateUserAttribute(token *gocloak.JWT, userID, attributeKey, attributeValue string) error {
+	user, err := client.GetUserByID(context.Background(), token.AccessToken, realm, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user by ID: %v", err)
+	}
 
 	attributes := user.Attributes
 	if attributes == nil {
 		attributes = &map[string][]string{}
 	}
 
-	(*attributes)["mail_otp"] = []string{otpToken}
-	(*attributes)["validated_mail_otp"] = []string{"false"}
+	if attributeValue == "" {
+		delete(*attributes, attributeKey)
+	} else {
+		(*attributes)[attributeKey] = []string{attributeValue}
+	}
 
 	err = client.UpdateUser(context.Background(), token.AccessToken, realm, gocloak.User{
 		ID:         &userID,
@@ -158,73 +244,6 @@ func saveOTPInKeycloak(email, otpToken string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update user attributes: %v", err)
-	}
-
-	return nil
-}
-
-func getOTPFromKeycloak(email string) (string, error) {
-	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
-	if err != nil {
-		return "", fmt.Errorf("failed to login as admin: %v", err)
-	}
-
-	users, err := client.GetUsers(context.Background(), token.AccessToken, realm, gocloak.GetUsersParams{
-		Email: gocloak.StringP(email),
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to get user by email: %v", err)
-	}
-
-	if len(users) == 0 {
-		return "", fmt.Errorf("user not found with email: %s", email)
-	}
-
-	attributes := *users[0].Attributes
-	if otpToken, ok := attributes["mail_otp"]; ok && len(otpToken) > 0 {
-		return otpToken[0], nil
-	}
-
-	return "", fmt.Errorf("otp token not found for email: %s", email)
-}
-
-func removeOTPFromKeycloak(email string) error {
-	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
-	if err != nil {
-		return fmt.Errorf("failed to login as admin: %v", err)
-	}
-
-	users, err := client.GetUsers(context.Background(), token.AccessToken, realm, gocloak.GetUsersParams{
-		Email: gocloak.StringP(email),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get user by email: %v", err)
-	}
-
-	if len(users) == 0 {
-		return fmt.Errorf("user not found with email: %s", email)
-	}
-
-	user := users[0]
-	userID := *user.ID
-
-	attributes := user.Attributes
-	if attributes == nil {
-		attributes = &map[string][]string{}
-	}
-
-	delete(*attributes, "mail_otp")
-	(*attributes)["validated_mail_otp"] = []string{"true"}
-
-	err = client.UpdateUser(context.Background(), token.AccessToken, realm, gocloak.User{
-		ID:         &userID,
-		Email:      user.Email,
-		FirstName:  user.FirstName,
-		LastName:   user.LastName,
-		Attributes: attributes,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to remove otp token from user attributes: %v", err)
 	}
 
 	return nil
@@ -365,7 +384,6 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 	var credentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
-		OTPToken string `json:"otp_token"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &credentials)
 	if err != nil {
@@ -432,27 +450,13 @@ func handleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyR
 		}, nil
 	}
 
-	err = client.UpdateUser(context.Background(), jwt.AccessToken, realm, gocloak.User{
-		ID: &sub,
-		Attributes: &map[string][]string{
-			"mail_otp":           {},
-			"validated_mail_otp": {"true"},
-		},
-	})
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: 500,
-			Body:       `{"error": "Failed to update user attributes"}`,
-		}, nil
-	}
-
 	return respondWithJSON(map[string]string{
 		"status":       "success",
 		"access_token": jwt.AccessToken,
 	}, 200)
 }
 
-func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func handleSignup(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var userData struct {
 		Email    string `json:"email"`
 		Phone    string `json:"phone"`
@@ -474,6 +478,30 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 		}, nil
 	}
 
+	users, err := client.GetUsers(
+		context.Background(),
+		token.AccessToken,
+		realm,
+		gocloak.GetUsersParams{
+			Email: gocloak.StringP(userData.Email),
+		},
+	)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error": "Failed to get user: %v"}`, err.Error()),
+		}, nil
+	}
+
+	if len(users) == 0 {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 404,
+			Body:       `{"error": "User not found"}`,
+		}, nil
+	}
+
+	userID := *users[0].ID
+
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "Your App Name",
 		AccountName: userData.Email,
@@ -485,25 +513,27 @@ func handleRegister(request events.APIGatewayProxyRequest) (events.APIGatewayPro
 		}, nil
 	}
 
-	user := gocloak.User{
-		Email:   gocloak.StringP(userData.Email),
-		Enabled: gocloak.BoolP(true),
-		Attributes: &map[string][]string{
-			"phone":      {userData.Phone},
-			"otp_secret": {key.Secret()},
-		},
-	}
-
-	userID, err := client.CreateUser(
-		context.Background(),
-		token.AccessToken,
-		realm,
-		user,
-	)
+	err = updateUserAttribute(token, userID, "phone", userData.Phone)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: 500,
-			Body:       fmt.Sprintf(`{"error": "Failed to create user: %v"}`, err.Error()),
+			Body:       fmt.Sprintf(`{"error": "Failed to update user phone: %v"}`, err.Error()),
+		}, nil
+	}
+
+	err = updateUserAttribute(token, userID, "otp_secret", key.Secret())
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error": "Failed to update user otp_secret: %v"}`, err.Error()),
+		}, nil
+	}
+
+	err = updateUserAttribute(token, userID, "draft", "")
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: 500,
+			Body:       fmt.Sprintf(`{"error": "Failed to update user draft attribute: %v"}`, err.Error()),
 		}, nil
 	}
 
