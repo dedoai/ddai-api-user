@@ -38,7 +38,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	case "GET":
 		if strings.HasPrefix(request.Path, "/account/") {
 			return handleGetUserProfile(request)
-		} else if request.Path == "/v1/auth/otp/mail" {
+		} else if request.Path == "/v1/auth/otp/email" {
 			return handleVerifyOTP(request)
 		}
 	case "POST":
@@ -48,7 +48,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return handleRegister(request)
 		} else if request.Path == "/v1/auth/reset-password" {
 			return handleResetPassword(request)
-		} else if request.Path == "/v1/auth/otp/mail" {
+		} else if request.Path == "/v1/auth/otp/email" {
 			return handleSendOTP(request)
 		}
 	case "OPTIONS":
