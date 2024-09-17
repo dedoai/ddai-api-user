@@ -8,7 +8,10 @@ require (
 	github.com/pquerna/otp v1.4.0
 )
 
-require github.com/sendgrid/rest v2.6.9+incompatible // indirect
+require (
+	github.com/golang/mock v1.6.0 // indirect
+	github.com/sendgrid/rest v2.6.9+incompatible // indirect
+)
 
 require (
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
@@ -20,5 +23,6 @@ require (
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sendgrid/sendgrid-go v3.16.0+incompatible
 	github.com/stretchr/testify v1.8.1 // indirect
+	github.com/twilio/twilio-go v1.23.0
 	golang.org/x/net v0.0.0-20221019024206-cb67ada4b0ad // indirect
 )

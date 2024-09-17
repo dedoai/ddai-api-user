@@ -16,19 +16,27 @@ import (
 	"github.com/pquerna/otp/totp"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"github.com/twilio/twilio-go"
+	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
 var (
-	client       gocloak.GoCloak
-	realm        string
-	clientID     string
-	clientSecret string
+	client                gocloak.GoCloak
+	realm                 string
+	clientID              string
+	clientSecret          string
+	twilioAccountSeed     string
+	twilioAccountToken    string
+	twilioSmsSenderNumber string
 )
 
 func init() {
 	realm = os.Getenv("KEYCLOAK_REALM")
 	clientID = "web-app"
 	clientSecret = os.Getenv("CLIENT_SECRET")
+	twilioAccountSeed = os.Getenv("TWILIO_ACCOUNT_SEED")
+	twilioAccountToken = os.Getenv("TWILIO_ACCOUNT_TOKEN")
+	twilioSmsSenderNumber = os.Getenv("TWILIO_SMS_SENDER_NUMBER")
 
 	client = *gocloak.NewClient("https://sso.dev.dedoai.org")
 }
@@ -40,6 +48,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return handleGetUserProfile(request)
 		} else if request.Path == "/v1/auth/otp/email" {
 			return handleSendOTP(request)
+		} else if request.Path == "/v1/auth/otp/sms" {
+			return handleSendSmsOTP(request)
 		}
 	case "POST":
 		if request.Path == "/v1/auth/signin" {
@@ -50,6 +60,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return handleResetPassword(request)
 		} else if request.Path == "/v1/auth/otp/email" {
 			return handleVerifyOTP(request)
+		} else if request.Path == "/v1/auth/otp/sms" {
+			return handleVerifySmsOTP(request)
 		}
 	case "OPTIONS":
 		return respondWithJSON(nil, 200)
@@ -114,6 +126,60 @@ func handleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProx
 	}
 
 	return respondWithJSON(map[string]string{"message": "OTP sent successfully"}, 200)
+}
+
+func handleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	phone := request.QueryStringParameters["phone"]
+	userID := request.QueryStringParameters["userid"]
+	if phone == "" {
+		return respondWithJSON(map[string]string{"error": "Missing phone parameter"}, 400)
+	}
+
+	otpToken := generateOTP(6)
+
+	err := saveSmsOTPInKeycloak(phone, otpToken, userID)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to save SMS OTP in Keycloak"}, 500)
+	}
+
+	return respondWithJSON(map[string]string{"message": "SMS OTP sent successfully"}, 200)
+}
+
+func handleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var requestBody struct {
+		Phone    string `json:"phone"`
+		OTPToken string `json:"otpToken"`
+		UserID   string `json:"userid"`
+	}
+
+	err := json.Unmarshal([]byte(request.Body), &requestBody)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
+	}
+
+	phone := requestBody.Phone
+	otpToken := requestBody.OTPToken
+	userID := requestBody.UserID
+
+	if phone == "" || otpToken == "" {
+		return respondWithJSON(map[string]string{"error": "Missing phone or otpToken field"}, 400)
+	}
+
+	valid, err := verifySmsOTPFromKeycloak(phone, otpToken, userID)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to verify SMS OTP"}, 500)
+	}
+
+	if !valid {
+		return respondWithJSON(map[string]string{"error": "Invalid SMS OTP"}, 400)
+	}
+
+	err = removeSmsOTPFromKeycloak(phone, userID)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Failed to remove SMS OTP from Keycloak"}, 500)
+	}
+
+	return respondWithJSON(map[string]string{"message": "SMS OTP verified successfully"}, 200)
 }
 
 func handleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -256,6 +322,112 @@ func updateUserAttribute(token *gocloak.JWT, userID, attributeKey, attributeValu
 	if err != nil {
 		return fmt.Errorf("failed to update user attributes: %v", err)
 	}
+
+	return nil
+}
+
+func saveSmsOTPInKeycloak(phone, otpToken, userID string) error {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "phone", phone)
+	if err != nil {
+		return fmt.Errorf("failed to update user attributes: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "sms_otp", otpToken)
+	if err != nil {
+		return fmt.Errorf("failed to update user attributes: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "validated_sms_otp", "false")
+	if err != nil {
+		return fmt.Errorf("failed to update user attributes: %v", err)
+	}
+
+	return nil
+}
+
+func verifySmsOTPFromKeycloak(phone, otpToken, userID string) (bool, error) {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return false, fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	if err != nil {
+		fmt.Println(err)
+		return false, fmt.Errorf("failed to get user by phone number: %v", err)
+	}
+
+	storedOTP, _, err := getSmsOTPFromKeycloak(phone, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get sms otp from keycloak: %v", err)
+	}
+
+	if storedOTP == otpToken {
+		err = updateUserAttribute(token, userID, "validated_sms_otp", "true")
+		if err != nil {
+			return false, fmt.Errorf("failed to update user attributes: %v", err)
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func removeSmsOTPFromKeycloak(phone, userID string) error {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	err = updateUserAttribute(token, userID, "sms_otp", "")
+	if err != nil {
+		return fmt.Errorf("failed to remove sms otp from user attributes: %v", err)
+	}
+
+	return nil
+}
+
+func getSmsOTPFromKeycloak(phone, userID string) (string, string, error) {
+	token, err := client.LoginAdmin(context.Background(), os.Getenv("KEYCLOAK_ADMIN_USERNAME"), os.Getenv("KEYCLOAK_ADMIN_PASSWORD"), realm)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to login as admin: %v", err)
+	}
+
+	user, err := client.GetUserByID(context.Background(), token.AccessToken, realm, userID)
+	if err != nil {
+		fmt.Println(err)
+		return "", "", fmt.Errorf("failed to get user by ID: %v", err)
+	}
+
+	attributes := *user.Attributes
+	if otpToken, ok := attributes["sms_otp"]; ok && len(otpToken) > 0 {
+		return otpToken[0], userID, nil
+	}
+
+	return "", "", fmt.Errorf("sms otp token not found for phone number: %s", phone)
+}
+
+func sendSmsOTP(phone, otpToken string) error {
+	client := twilio.NewRestClientWithParams(twilio.ClientParams{
+		Username: twilioAccountSeed,
+		Password: twilioAccountToken,
+	})
+
+	params := &twilioApi.CreateMessageParams{}
+	params.SetTo(phone)
+	params.SetFrom("+17754060300")
+	params.SetBody("Your OTP is: " + otpToken)
+
+	resp, err := client.Api.CreateMessage(params)
+	if err != nil {
+		return fmt.Errorf("error sending SMS message: %v", err)
+	}
+
+	fmt.Println("resp", resp.Body)
 
 	return nil
 }
