@@ -117,10 +117,21 @@ func handleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProx
 }
 
 func handleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	email := request.QueryStringParameters["email"]
-	otpToken := request.QueryStringParameters["otp_token"]
+	var requestBody struct {
+		Email    string `json:"email"`
+		OTPToken string `json:"otpToken"`
+	}
+
+	err := json.Unmarshal([]byte(request.Body), &requestBody)
+	if err != nil {
+		return respondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
+	}
+
+	email := requestBody.Email
+	otpToken := requestBody.OTPToken
+
 	if email == "" || otpToken == "" {
-		return respondWithJSON(map[string]string{"error": "Missing email or otp_token parameter"}, 400)
+		return respondWithJSON(map[string]string{"error": "Missing email or otp_token field"}, 400)
 	}
 
 	savedOTPToken, userID, err := getOTPFromKeycloak(email)
