@@ -89,11 +89,15 @@ func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (event
 	if email == "" {
 		return RespondWithJSON(map[string]string{"error": "Missing email parameter"}, 400)
 	}
-	err := c.service.SendOTP(context.Background(), email)
+	otpToken, userID, err := c.service.SendOTP(context.Background(), email)
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
 	}
-	return RespondWithJSON(map[string]string{"message": "OTP sent successfully"}, 200)
+	return RespondWithJSON(map[string]string{
+		"message": "OTP sent successfully",
+		"otp":     otpToken,
+		"user_id": userID,
+	}, 200)
 }
 
 func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
