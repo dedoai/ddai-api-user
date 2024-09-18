@@ -10,4 +10,5 @@ type Options struct {
 	TwilioAccountSeed     string
 	TwilioAccountToken    string
 	TwilioSmsSenderNumber string
+	SendgridAPIKey        string
 }

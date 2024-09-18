@@ -14,9 +14,9 @@ import (
 
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	options := config.LoadConfig()
-	repo := repository.NewRepository(options.Client, options.Realm)
-	service := services.NewService(*repo, options)
-	ctrl := controller.NewController(*service)
+	repo := repository.NewRepository(options.Client, options.Realm, options)
+	service := services.NewService(repo, options)
+	ctrl := controller.NewController(service)
 
 	switch request.HTTPMethod {
 	case "GET":
