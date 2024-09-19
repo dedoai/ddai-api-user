@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -56,6 +57,7 @@ func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.
 	}
 	jwt, err := c.service.Login(context.Background(), credentials.Email, credentials.Password)
 	if err != nil {
+		fmt.Println("ERR", err)
 		return RespondWithJSON(map[string]string{"error": "Invalid credentials"}, 401)
 	}
 	return RespondWithJSON(map[string]string{
@@ -74,7 +76,7 @@ func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
 	}
-	userID, _, err := c.service.Signup(context.Background(), userData.Email, userData.Password)
+	userID, err := c.service.Signup(context.Background(), userData.Email, userData.Password)
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
 	}

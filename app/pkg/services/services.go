@@ -9,7 +9,6 @@ import (
 	"github.com/Nerzal/gocloak/v12"
 	"github.com/dedoai/ddai-api-user/models"
 	"github.com/dedoai/ddai-api-user/pkg/repository"
-	"github.com/pquerna/otp/totp"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/twilio/twilio-go"
@@ -20,7 +19,7 @@ type UserService interface {
 	GetUserProfile(ctx context.Context, username string) (*gocloak.User, error)
 	ResetPassword(ctx context.Context, email, newPassword string) error
 	Login(ctx context.Context, email, password string) (*gocloak.JWT, error)
-	Signup(ctx context.Context, email, password string) (string, string, error)
+	Signup(ctx context.Context, email, password string) (string, error)
 	SendOTP(ctx context.Context, email string) (string, string, error)
 	SendSmsOTP(ctx context.Context, phone, userID string) error
 	VerifySmsOTP(ctx context.Context, phone, otpToken, userID string) (bool, error)
@@ -56,42 +55,78 @@ func (s *userService) ResetPassword(ctx context.Context, email, newPassword stri
 }
 
 func (s *userService) Login(ctx context.Context, email, password string) (*gocloak.JWT, error) {
-	jwt, err := s.options.Client.Login(ctx, s.options.ClientID, s.options.ClientSecret, s.options.Realm, email, password)
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by email: %v", err)
+	}
+
+	if user.Attributes != nil {
+		if vals, ok := (*user.Attributes)["validated_mail_otp"]; ok {
+			if len(vals) == 0 || vals[0] != "true" {
+				return nil, fmt.Errorf("email OTP not validated")
+			}
+		} else {
+			return nil, fmt.Errorf("email OTP validation not found")
+		}
+
+		if vals, ok := (*user.Attributes)["validated_sms_otp"]; ok {
+			if len(vals) == 0 || vals[0] != "true" {
+				return nil, fmt.Errorf("SMS OTP not validated")
+			}
+		} else {
+			return nil, fmt.Errorf("SMS OTP validation not found")
+		}
+	} else {
+		return nil, fmt.Errorf("user attributes are missing")
+	}
+
+	jwt, err := s.options.Client.Login(ctx, "web-app", s.options.ClientSecret, s.options.Realm, email, password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to login: %v", err)
 	}
 	return jwt, nil
 }
 
-func (s *userService) Signup(ctx context.Context, email, password string) (string, string, error) {
-	user := gocloak.User{
-		Email:   gocloak.StringP(email),
-		Enabled: gocloak.BoolP(true),
-		// Attributes: &map[string][]string{"phone": {phone}},
-	}
-	userID, err := s.repo.CreateUser(ctx, user)
+func (s *userService) Signup(ctx context.Context, email, password string) (string, error) {
+	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create user: %v", err)
+		return "", fmt.Errorf("failed to create user: %v", err)
 	}
-	err = s.repo.SetPassword(ctx, userID, password, false)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to set password: %v", err)
+
+	if user.Attributes != nil {
+		if vals, ok := (*user.Attributes)["validated_mail_otp"]; ok {
+			if len(vals) == 0 || vals[0] != "true" {
+				return "", fmt.Errorf("email OTP not validated")
+			}
+		} else {
+			return "", fmt.Errorf("email OTP validation not found")
+		}
+
+		if vals, ok := (*user.Attributes)["validated_sms_otp"]; ok {
+			if len(vals) == 0 || vals[0] != "true" {
+				return "", fmt.Errorf("SMS OTP not validated")
+			}
+		} else {
+			return "", fmt.Errorf("SMS OTP validation not found")
+		}
+	} else {
+		return "", fmt.Errorf("user attributes are missing")
 	}
-	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Your App",
-		AccountName: email,
-	})
+
+	err = s.repo.SetPassword(ctx, *user.ID, password, false)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to generate OTP secret: %v", err)
+		return "", fmt.Errorf("failed to set password: %v", err)
 	}
 	err = s.repo.UpdateUser(ctx, gocloak.User{
-		ID:         &userID,
-		Attributes: &map[string][]string{"otp_secret": {key.Secret()}},
+		ID:            user.ID,
+		Email:         &email,
+		EmailVerified: gocloak.BoolP(true),
+		Enabled:       gocloak.BoolP(true),
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("failed to update user attribute: %v", err)
+		return "", fmt.Errorf("failed to update user attribute: %v", err)
 	}
-	return userID, key.Secret(), nil
+	return *user.ID, nil
 }
 
 func (s *userService) SendOTP(ctx context.Context, email string) (string, string, error) {
@@ -119,13 +154,18 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 		userID = *users[0].ID
 	}
 
+	userData, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get user by ID: %v", err)
+	}
+	mergedAttributes := mergeAttributes(userData.Attributes, &map[string][]string{
+		"mail_otp":           {otpToken},
+		"validated_mail_otp": {"false"},
+	})
 	err = s.repo.UpdateUser(ctx, gocloak.User{
-		ID:    &userID,
-		Email: &email,
-		Attributes: &map[string][]string{
-			"mail_otp":           {otpToken},
-			"validated_mail_otp": {"false"},
-		},
+		ID:         &userID,
+		Email:      &email,
+		Attributes: &mergedAttributes,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to update user attribute: %v", err)
@@ -145,13 +185,15 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 		return fmt.Errorf("failed to get user by ID: %v", err)
 	}
 	otpToken := generateOTP(6)
+	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
+		"sms_otp":           {otpToken},
+		"validated_sms_otp": {"false"},
+		"phone":             {phone},
+	})
 	err = s.repo.UpdateUser(ctx, gocloak.User{
-		ID:    &userID,
-		Email: user.Email,
-		Attributes: &map[string][]string{
-			"sms_otp":           {otpToken},
-			"validated_sms_otp": {"false"},
-		},
+		ID:         &userID,
+		Email:      user.Email,
+		Attributes: &mergedAttributes,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update user attribute: %v", err)
@@ -168,12 +210,14 @@ func (s *userService) VerifySmsOTP(ctx context.Context, phone, otpToken, userID 
 	if err != nil {
 		return false, fmt.Errorf("failed to get user by ID: %v", err)
 	}
-	attributes := *user.Attributes
-	if storedOTP, ok := attributes["sms_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
+	if storedOTP, ok := (*user.Attributes)["sms_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
+		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
+			"validated_sms_otp": {"true"},
+		})
 		err = s.repo.UpdateUser(ctx, gocloak.User{
 			ID:         user.ID,
 			Email:      user.Email,
-			Attributes: &map[string][]string{"validated_sms_otp": {"true"}},
+			Attributes: &mergedAttributes,
 		})
 		if err != nil {
 			return false, fmt.Errorf("failed to update user attribute: %v", err)
@@ -188,12 +232,14 @@ func (s *userService) VerifyOTP(ctx context.Context, email, otpToken string) err
 	if err != nil {
 		return fmt.Errorf("failed to get user by email: %v", err)
 	}
-	attributes := *user.Attributes
-	if storedOTP, ok := attributes["mail_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
+	if storedOTP, ok := (*user.Attributes)["mail_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
+		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
+			"validated_mail_otp": {"true"},
+		})
 		err = s.repo.UpdateUser(ctx, gocloak.User{
 			ID:         user.ID,
 			Email:      &email,
-			Attributes: &map[string][]string{"validated_mail_otp": {"true"}},
+			Attributes: &mergedAttributes,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to update user attribute: %v", err)
@@ -249,4 +295,15 @@ func sendSmsOTP(phone, otpToken, twilioAccountSID, twilioAuthToken, twilioPhoneN
 	params.SetBody(fmt.Sprintf("Your OTP is: %s", otpToken))
 	_, err := client.Api.CreateMessage(params)
 	return err
+}
+
+func mergeAttributes(existing, updates *map[string][]string) map[string][]string {
+	merged := make(map[string][]string)
+	for k, v := range *existing {
+		merged[k] = v
+	}
+	for k, v := range *updates {
+		merged[k] = v
+	}
+	return merged
 }
