@@ -48,6 +48,7 @@ func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.
 	var credentials struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Captcha  string `json:"captcha"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &credentials)
 	if err != nil {
@@ -66,36 +67,35 @@ func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.
 func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var userData struct {
 		Email    string `json:"email"`
-		Phone    string `json:"phone"`
 		Password string `json:"password"`
+		Captcha  string `json:"captcha"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &userData)
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
 	}
-	userID, otpSecret, err := c.service.Signup(context.Background(), userData.Email, userData.Phone, userData.Password)
+	userID, _, err := c.service.Signup(context.Background(), userData.Email, userData.Password)
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
 	}
 	return RespondWithJSON(map[string]interface{}{
-		"status":     "success",
-		"user_id":    userID,
-		"otp_secret": otpSecret,
+		"status":  "success",
+		"user_id": userID,
 	}, 201)
 }
 
 func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	email := request.QueryStringParameters["email"]
+	// captcha := request.QueryStringParameters["captcha"]
 	if email == "" {
 		return RespondWithJSON(map[string]string{"error": "Missing email parameter"}, 400)
 	}
-	otpToken, userID, err := c.service.SendOTP(context.Background(), email)
+	_, userID, err := c.service.SendOTP(context.Background(), email)
 	if err != nil {
 		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
 	}
 	return RespondWithJSON(map[string]string{
 		"message": "OTP sent successfully",
-		"otp":     otpToken,
 		"user_id": userID,
 	}, 200)
 }
@@ -103,6 +103,7 @@ func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (event
 func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	phone := request.QueryStringParameters["phone"]
 	userID := request.QueryStringParameters["userid"]
+	// captcha := request.QueryStringParameters["captcha"]
 	if phone == "" {
 		return RespondWithJSON(map[string]string{"error": "Missing phone parameter"}, 400)
 	}

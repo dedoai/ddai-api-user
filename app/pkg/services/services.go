@@ -20,7 +20,7 @@ type UserService interface {
 	GetUserProfile(ctx context.Context, username string) (*gocloak.User, error)
 	ResetPassword(ctx context.Context, email, newPassword string) error
 	Login(ctx context.Context, email, password string) (*gocloak.JWT, error)
-	Signup(ctx context.Context, email, phone, password string) (string, string, error)
+	Signup(ctx context.Context, email, password string) (string, string, error)
 	SendOTP(ctx context.Context, email string) (string, string, error)
 	SendSmsOTP(ctx context.Context, phone, userID string) error
 	VerifySmsOTP(ctx context.Context, phone, otpToken, userID string) (bool, error)
@@ -63,11 +63,11 @@ func (s *userService) Login(ctx context.Context, email, password string) (*goclo
 	return jwt, nil
 }
 
-func (s *userService) Signup(ctx context.Context, email, phone, password string) (string, string, error) {
+func (s *userService) Signup(ctx context.Context, email, password string) (string, string, error) {
 	user := gocloak.User{
-		Email:      gocloak.StringP(email),
-		Enabled:    gocloak.BoolP(true),
-		Attributes: &map[string][]string{"phone": {phone}},
+		Email:   gocloak.StringP(email),
+		Enabled: gocloak.BoolP(true),
+		// Attributes: &map[string][]string{"phone": {phone}},
 	}
 	userID, err := s.repo.CreateUser(ctx, user)
 	if err != nil {
