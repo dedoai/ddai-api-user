@@ -39,7 +39,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return ctrl.HandleVerifyOTP(request)
 		} else if request.Path == "/v1/auth/otp/sms" {
 			return ctrl.HandleVerifySmsOTP(request)
-		} else if request.Path == "/v1/kyc" {
+		} else if request.Path == "/kyc" {
 			return ctrl.HandleSumsubWebhook(request)
 		}
 	case "OPTIONS":
