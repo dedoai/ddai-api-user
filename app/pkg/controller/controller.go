@@ -11,12 +11,14 @@ import (
 )
 
 type Controller struct {
-	service services.UserService
+	service    services.UserService
+	kycService services.KYCService
 }
 
-func NewController(service services.UserService) *Controller {
+func NewController(service services.UserService, kycService services.KYCService) *Controller {
 	return &Controller{
-		service: service,
+		service:    service,
+		kycService: kycService,
 	}
 }
 
@@ -171,4 +173,44 @@ func RespondWithJSON(data interface{}, statusCode int) (events.APIGatewayProxyRe
 		},
 		Body: string(body),
 	}, nil
+}
+
+func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var webhookData map[string]interface{}
+	err := json.Unmarshal([]byte(request.Body), &webhookData)
+	if err != nil {
+		return RespondWithJSON(map[string]string{"error": "Invalid JSON payload"}, 400)
+	}
+
+	eventType, ok := webhookData["type"].(string)
+	if !ok {
+		return RespondWithJSON(map[string]string{"error": "Missing or invalid 'type' field"}, 400)
+	}
+
+	switch eventType {
+	case "applicantReviewed":
+		var applicantReviewed services.ApplicantReviewed
+		err := json.Unmarshal([]byte(request.Body), &applicantReviewed)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantReviewed' payload"}, 400)
+		}
+		err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed.ApplicantID, applicantReviewed.ReviewResult.ReviewAnswer)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
+		}
+	case "applicantCreated":
+		var applicantCreated services.ApplicantCreated
+		err := json.Unmarshal([]byte(request.Body), &applicantCreated)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantCreated' payload"}, 400)
+		}
+		err = c.kycService.ProcessApplicantCreated(context.Background(), applicantCreated.ApplicantID)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
+		}
+	default:
+		return RespondWithJSON(map[string]string{"error": "Unsupported event type"}, 400)
+	}
+
+	return RespondWithJSON(map[string]string{"status": "success"}, 200)
 }

@@ -16,7 +16,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	options := config.LoadConfig()
 	repo := repository.NewRepository(options.Client, options.Realm, options)
 	service := services.NewService(repo, options)
-	ctrl := controller.NewController(service)
+	kycService := services.NewKYCService(repo)
+	ctrl := controller.NewController(service, kycService)
 
 	switch request.HTTPMethod {
 	case "GET":
@@ -38,6 +39,8 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return ctrl.HandleVerifyOTP(request)
 		} else if request.Path == "/v1/auth/otp/sms" {
 			return ctrl.HandleVerifySmsOTP(request)
+		} else if request.Path == "/v1/kyc" {
+			return ctrl.HandleSumsubWebhook(request)
 		}
 	case "OPTIONS":
 		return controller.RespondWithJSON(nil, 200)
