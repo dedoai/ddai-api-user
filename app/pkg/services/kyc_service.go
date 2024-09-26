@@ -2,48 +2,92 @@ package services
 
 import (
 	"context"
-	"net/http"
-	"time"
+	"fmt"
 
 	"github.com/Nerzal/gocloak/v12"
-	"github.com/dedoai/ddai-api-user/models"
+	"github.com/dedoai/ddai-api-user/pkg/repository"
 )
 
-type KycService interface {
-	CreateApplicant(ctx context.Context, user *gocloak.User) (string, error)
-	GetApplicantStatus(ctx context.Context, applicantID string) (string, error)
-	UpdateApplicantData(ctx context.Context, applicantID string, data models.KycData) error
-	HandleWebhook(ctx context.Context, payload []byte) error
+type ApplicantReviewed struct {
+	ApplicantID    string `json:"applicantId"`
+	InspectionID   string `json:"inspectionId"`
+	CorrelationID  string `json:"correlationId"`
+	ExternalUserID string `json:"externalUserId"`
+	LevelName      string `json:"levelName"`
+	Type           string `json:"type"`
+	ReviewResult   struct {
+		ReviewAnswer string `json:"reviewAnswer"`
+	} `json:"reviewResult"`
+	ReviewStatus string `json:"reviewStatus"`
+	CreatedAtMs  string `json:"createdAtMs"`
+}
+
+type ApplicantCreated struct {
+	ApplicantID    string `json:"applicantId"`
+	InspectionID   string `json:"inspectionId"`
+	CorrelationID  string `json:"correlationId"`
+	LevelName      string `json:"levelName"`
+	ExternalUserID string `json:"externalUserId"`
+	Type           string `json:"type"`
+	SandboxMode    string `json:"sandboxMode"`
+	ReviewStatus   string `json:"reviewStatus"`
+	CreatedAtMs    string `json:"createdAtMs"`
+	ClientID       string `json:"clientId"`
+}
+
+type KYCService interface {
+	ProcessApplicantCreated(ctx context.Context, applicantID string) error
+	ProcessApplicantReviewed(ctx context.Context, applicantID string, status string) error
 }
 
 type kycService struct {
-	projectID  string
-	secretKey  string
-	apiBaseURL string
-	httpClient *http.Client
+	repo repository.UserRepository
 }
 
-func NewKycService(projectID, secretKey string) KycService {
+func NewKYCService(repo repository.UserRepository) KYCService {
 	return &kycService{
-		projectID:  projectID,
-		secretKey:  secretKey,
-		apiBaseURL: "https://api.sumsub.com",
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		repo: repo,
 	}
 }
 
-func (k *kycService) CreateApplicant(ctx context.Context, user *gocloak.User) (string, error) {
-	return "", nil
-}
+func (s *kycService) ProcessApplicantCreated(ctx context.Context, applicantID string) error {
+	user, err := s.repo.GetUserByID(ctx, applicantID)
+	if err != nil {
+		return fmt.Errorf("failed to get user by ID: %v", err)
+	}
 
-func (k *kycService) GetApplicantStatus(ctx context.Context, applicantID string) (string, error) {
-	return "", nil
-}
+	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
+		"kyc_status": {"pending"},
+	})
+	err = s.repo.UpdateUser(ctx, gocloak.User{
+		ID:         user.ID,
+		Email:      user.Email,
+		Attributes: &mergedAttributes,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update user attribute: %v", err)
+	}
 
-func (k *kycService) UpdateApplicantData(ctx context.Context, applicantID string, data models.KycData) error {
 	return nil
 }
 
-func (k *kycService) HandleWebhook(ctx context.Context, payload []byte) error {
+func (s *kycService) ProcessApplicantReviewed(ctx context.Context, applicantID string, status string) error {
+	user, err := s.repo.GetUserByID(ctx, applicantID)
+	if err != nil {
+		return fmt.Errorf("failed to get user by ID: %v", err)
+	}
+
+	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
+		"kyc_status": {status},
+	})
+	err = s.repo.UpdateUser(ctx, gocloak.User{
+		ID:         user.ID,
+		Email:      user.Email,
+		Attributes: &mergedAttributes,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update user attribute: %v", err)
+	}
+
 	return nil
 }
