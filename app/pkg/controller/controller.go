@@ -182,6 +182,8 @@ func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) 
 		return RespondWithJSON(map[string]string{"error": "Invalid JSON payload"}, 400)
 	}
 
+	fmt.Println("Data", webhookData)
+
 	eventType, ok := webhookData["type"].(string)
 	if !ok {
 		return RespondWithJSON(map[string]string{"error": "Missing or invalid 'type' field"}, 400)
