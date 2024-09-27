@@ -117,7 +117,7 @@ func (s *userService) Signup(ctx context.Context, email, password string) (strin
 	if err != nil {
 		return "", fmt.Errorf("failed to set password: %v", err)
 	}
-	err = s.repo.UpdateUser(ctx, gocloak.User{
+	err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 		ID:            user.ID,
 		Email:         &email,
 		EmailVerified: gocloak.BoolP(true),
@@ -132,7 +132,7 @@ func (s *userService) Signup(ctx context.Context, email, password string) (strin
 func (s *userService) SendOTP(ctx context.Context, email string) (string, string, error) {
 	otpToken := generateOTP(6)
 
-	users, err := s.repo.GetUsers(ctx, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
+	users, err := s.repo.GetUsers(ctx, s.options.Realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get user by email: %v", err)
 	}
@@ -146,7 +146,7 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 				"draft": {"true"},
 			},
 		}
-		userID, err = s.repo.CreateUser(ctx, user)
+		userID, err = s.repo.CreateUser(ctx, s.options.Realm, user)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to create user: %v", err)
 		}
@@ -162,7 +162,7 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 		"mail_otp":           {otpToken},
 		"validated_mail_otp": {"false"},
 	})
-	err = s.repo.UpdateUser(ctx, gocloak.User{
+	err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 		ID:         &userID,
 		Email:      &email,
 		Attributes: &mergedAttributes,
@@ -190,7 +190,7 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 		"validated_sms_otp": {"false"},
 		"phone":             {phone},
 	})
-	err = s.repo.UpdateUser(ctx, gocloak.User{
+	err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 		ID:         &userID,
 		Email:      user.Email,
 		Attributes: &mergedAttributes,
@@ -214,7 +214,7 @@ func (s *userService) VerifySmsOTP(ctx context.Context, phone, otpToken, userID 
 		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
 			"validated_sms_otp": {"true"},
 		})
-		err = s.repo.UpdateUser(ctx, gocloak.User{
+		err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 			ID:         user.ID,
 			Email:      user.Email,
 			Attributes: &mergedAttributes,
@@ -236,7 +236,7 @@ func (s *userService) VerifyOTP(ctx context.Context, email, otpToken string) err
 		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
 			"validated_mail_otp": {"true"},
 		})
-		err = s.repo.UpdateUser(ctx, gocloak.User{
+		err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 			ID:         user.ID,
 			Email:      &email,
 			Attributes: &mergedAttributes,

@@ -11,10 +11,11 @@ import (
 type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*gocloak.User, error)
 	GetUserByID(ctx context.Context, userID string) (*gocloak.User, error)
-	CreateUser(ctx context.Context, user gocloak.User) (string, error)
-	UpdateUser(ctx context.Context, user gocloak.User) error
+	GetUserByUsername(ctx context.Context, realm string, username string) (*gocloak.User, error)
+	CreateUser(ctx context.Context, realm string, user gocloak.User) (string, error)
+	UpdateUser(ctx context.Context, realm string, user gocloak.User) error
 	SetPassword(ctx context.Context, userID, password string, temporary bool) error
-	GetUsers(ctx context.Context, params gocloak.GetUsersParams) ([]*gocloak.User, error)
+	GetUsers(ctx context.Context, realm string, params gocloak.GetUsersParams) ([]*gocloak.User, error)
 	GetAdminToken(ctx context.Context) (*gocloak.JWT, error)
 }
 
@@ -33,7 +34,7 @@ func NewRepository(client gocloak.GoCloak, realm string, options *models.Options
 }
 
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*gocloak.User, error) {
-	users, err := r.GetUsers(ctx, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
+	users, err := r.GetUsers(ctx, r.realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user by email: %v", err)
 	}
@@ -55,25 +56,37 @@ func (r *userRepository) GetUserByID(ctx context.Context, userID string) (*goclo
 	return user, nil
 }
 
-func (r *userRepository) CreateUser(ctx context.Context, user gocloak.User) (string, error) {
+func (r *userRepository) GetUserByUsername(ctx context.Context, realm string, username string) (*gocloak.User, error) {
+	users, err := r.GetUsers(ctx, realm, gocloak.GetUsersParams{Username: gocloak.StringP(username)})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by username: %v", err)
+	}
+	if len(users) == 0 {
+		return nil, fmt.Errorf("user not found with username: %s", username)
+	}
+	return users[0], nil
+
+}
+
+func (r *userRepository) CreateUser(ctx context.Context, realm string, user gocloak.User) (string, error) {
 	token, err := r.GetAdminToken(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get admin token: %v", err)
 	}
-	userID, err := r.client.CreateUser(ctx, token.AccessToken, r.realm, user)
+	userID, err := r.client.CreateUser(ctx, token.AccessToken, realm, user)
 	if err != nil {
 		return "", fmt.Errorf("failed to create user: %v", err)
 	}
 	return userID, nil
 }
 
-func (r *userRepository) UpdateUser(ctx context.Context, user gocloak.User) error {
+func (r *userRepository) UpdateUser(ctx context.Context, realm string, user gocloak.User) error {
 	token, err := r.GetAdminToken(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get admin token: %v", err)
 	}
-	fmt.Println("update", token.AccessToken, user.Attributes)
-	err = r.client.UpdateUser(ctx, token.AccessToken, r.realm, gocloak.User{
+	err = r.client.UpdateUser(ctx, token.AccessToken, realm, gocloak.User{
+		Username:   user.Username,
 		ID:         user.ID,
 		Email:      user.Email,
 		FirstName:  user.FirstName,
@@ -98,12 +111,12 @@ func (r *userRepository) SetPassword(ctx context.Context, userID, password strin
 	return nil
 }
 
-func (r *userRepository) GetUsers(ctx context.Context, params gocloak.GetUsersParams) ([]*gocloak.User, error) {
+func (r *userRepository) GetUsers(ctx context.Context, realm string, params gocloak.GetUsersParams) ([]*gocloak.User, error) {
 	token, err := r.GetAdminToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get admin token: %v", err)
 	}
-	users, err := r.client.GetUsers(ctx, token.AccessToken, r.realm, params)
+	users, err := r.client.GetUsers(ctx, token.AccessToken, realm, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users: %v", err)
 	}

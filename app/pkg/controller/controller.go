@@ -179,14 +179,14 @@ func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) 
 	var webhookData map[string]interface{}
 	err := json.Unmarshal([]byte(request.Body), &webhookData)
 	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid JSON payload"}, 400)
+		return RespondWithJSON(map[string]string{"error": "Invalid JSON payload"}, 200)
 	}
 
 	fmt.Println("Data", webhookData)
 
 	eventType, ok := webhookData["type"].(string)
 	if !ok {
-		return RespondWithJSON(map[string]string{"error": "Missing or invalid 'type' field"}, 400)
+		return RespondWithJSON(map[string]string{"error": "Missing or invalid 'type' field"}, 200)
 	}
 
 	switch eventType {
@@ -194,24 +194,35 @@ func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) 
 		var applicantReviewed services.ApplicantReviewed
 		err := json.Unmarshal([]byte(request.Body), &applicantReviewed)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantReviewed' payload"}, 400)
+			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantReviewed' payload"}, 200)
 		}
-		err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed.ApplicantID, applicantReviewed.ReviewResult.ReviewAnswer)
+		//err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed.ApplicantID, applicantReviewed.ReviewResult.ReviewAnswer)
+		err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
+			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
 		}
 	case "applicantCreated":
 		var applicantCreated services.ApplicantCreated
 		err := json.Unmarshal([]byte(request.Body), &applicantCreated)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantCreated' payload"}, 400)
+			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantCreated' payload"}, 200)
 		}
-		err = c.kycService.ProcessApplicantCreated(context.Background(), applicantCreated.ApplicantID)
+		err = c.kycService.ProcessApplicantCreated(context.Background(), applicantCreated)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
+			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
+		}
+	case "applicantWorkflowCompleted":
+		var workflowCompleted services.ApplicantWorkflowCompleted
+		err := json.Unmarshal([]byte(request.Body), &workflowCompleted)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantWorkflowCompleted' payload"}, 200)
+		}
+		err = c.kycService.ProcessWorkflowCompleted(context.Background(), workflowCompleted)
+		if err != nil {
+			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
 		}
 	default:
-		return RespondWithJSON(map[string]string{"error": "Unsupported event type"}, 400)
+		return RespondWithJSON(map[string]string{"error": "Unsupported event type"}, 200)
 	}
 
 	return RespondWithJSON(map[string]string{"status": "success"}, 200)
