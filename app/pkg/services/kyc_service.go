@@ -237,16 +237,16 @@ func (s *kycService) ProcessApplicantReviewed(ctx context.Context, applicant App
 	}
 
 	var walletAddress string
-	for _, questionnaire := range applicantDetails.Questionnaires {
-		if questionnaire.ID == "KYB_1" {
-			if items, ok := questionnaire.Sections.AccountInformation.Items["cryptoWalletAddress"]; ok {
-				if value, ok := items.(map[string]interface{})["value"]; ok {
-					walletAddress = value.(string)
-					break
-				}
+	if len(applicantDetails.Questionnaires) > 0 {
+		questionnaire := applicantDetails.Questionnaires[0]
+		if items, ok := questionnaire.Sections.AccountInformation.Items["cryptoWalletAddress"]; ok {
+			if value, ok := items.(map[string]interface{})["value"]; ok {
+				walletAddress = value.(string)
 			}
 		}
 	}
+
+	fmt.Println("waller", walletAddress)
 
 	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
 		"kyc_status":     {applicant.ReviewStatus},
