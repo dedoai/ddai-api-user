@@ -3,10 +3,11 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/dedoai/ddai-api-user/models"
 	"github.com/dedoai/ddai-api-user/pkg/services"
 )
 
@@ -22,144 +23,27 @@ func NewController(service services.UserService, kycService services.KYCService)
 	}
 }
 
-func (c *Controller) HandleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	username := strings.TrimPrefix(request.Path, "/account/")
-	user, err := c.service.GetUserProfile(context.Background(), username)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(user, 200)
+type IResponse struct {
+	StatusCode  int         `json:"statusCode"`
+	ErrorCode   string      `json:"errorCode,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Data        interface{} `json:"data,omitempty"`
 }
 
-func (c *Controller) HandleResetPassword(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var resetData struct {
-		Email       string `json:"email"`
-		NewPassword string `json:"new_password"`
+func RespondWithJSON(data interface{}, statusCode int, errorCode string, description string) (events.APIGatewayProxyResponse, error) {
+	response := IResponse{
+		StatusCode:  statusCode,
+		ErrorCode:   errorCode,
+		Description: description,
+		Data:        data,
 	}
-	err := json.Unmarshal([]byte(request.Body), &resetData)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
-	}
-	err = c.service.ResetPassword(context.Background(), resetData.Email, resetData.NewPassword)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(map[string]string{"status": "success"}, 200)
-}
 
-func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var credentials struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Captcha  string `json:"captcha"`
-	}
-	err := json.Unmarshal([]byte(request.Body), &credentials)
+	body, err := json.Marshal(response)
 	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
-	}
-	jwt, err := c.service.Login(context.Background(), credentials.Email, credentials.Password)
-	if err != nil {
-		fmt.Println("ERR", err)
-		return RespondWithJSON(map[string]string{"error": "Invalid credentials"}, 401)
-	}
-	return RespondWithJSON(map[string]string{
-		"status":       "success",
-		"access_token": jwt.AccessToken,
-	}, 200)
-}
-
-func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var userData struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Captcha  string `json:"captcha"`
-	}
-	err := json.Unmarshal([]byte(request.Body), &userData)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
-	}
-	userID, err := c.service.Signup(context.Background(), userData.Email, userData.Password)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(map[string]interface{}{
-		"status":  "success",
-		"user_id": userID,
-	}, 201)
-}
-
-func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	email := request.QueryStringParameters["email"]
-	// captcha := request.QueryStringParameters["captcha"]
-	if email == "" {
-		return RespondWithJSON(map[string]string{"error": "Missing email parameter"}, 400)
-	}
-	_, userID, err := c.service.SendOTP(context.Background(), email)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(map[string]string{
-		"message": "OTP sent successfully",
-		"user_id": userID,
-	}, 200)
-}
-
-func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	phone := request.QueryStringParameters["phone"]
-	userID := request.QueryStringParameters["userid"]
-	// captcha := request.QueryStringParameters["captcha"]
-	if phone == "" {
-		return RespondWithJSON(map[string]string{"error": "Missing phone parameter"}, 400)
-	}
-	err := c.service.SendSmsOTP(context.Background(), phone, userID)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(map[string]string{"message": "SMS OTP sent successfully"}, 200)
-}
-
-func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var requestBody struct {
-		Phone    string `json:"phone"`
-		OTPToken string `json:"otpToken"`
-		UserID   string `json:"userid"`
-	}
-	err := json.Unmarshal([]byte(request.Body), &requestBody)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
-	}
-	valid, err := c.service.VerifySmsOTP(context.Background(), requestBody.Phone, requestBody.OTPToken, requestBody.UserID)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	if !valid {
-		return RespondWithJSON(map[string]string{"error": "Invalid SMS OTP"}, 400)
-	}
-	return RespondWithJSON(map[string]string{"message": "SMS OTP verified successfully"}, 200)
-}
-
-func (c *Controller) HandleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var requestBody struct {
-		Email    string `json:"email"`
-		OTPToken string `json:"otpToken"`
-	}
-	err := json.Unmarshal([]byte(request.Body), &requestBody)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid request body"}, 400)
-	}
-	err = c.service.VerifyOTP(context.Background(), requestBody.Email, requestBody.OTPToken)
-	if err != nil {
-		return RespondWithJSON(map[string]string{"error": err.Error()}, 500)
-	}
-	return RespondWithJSON(map[string]string{"message": "OTP verified successfully"}, 200)
-}
-
-func RespondWithJSON(data interface{}, statusCode int) (events.APIGatewayProxyResponse, error) {
-	body, err := json.Marshal(data)
-	if err != nil {
+		log.Println("Error marshalling response:", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: 500,
-			Body:       `{"error": "Internal Server Error"}`,
+			Body:       `{"statusCode":500,"errorCode":"INTERNAL_SERVER_ERROR","description":"Internal Server Error"}`,
 		}, nil
 	}
 	return events.APIGatewayProxyResponse{
@@ -175,18 +59,165 @@ func RespondWithJSON(data interface{}, statusCode int) (events.APIGatewayProxyRe
 	}, nil
 }
 
+func (c *Controller) HandleGetUserProfile(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	username := strings.TrimPrefix(request.Path, "/account/")
+	user, err := c.service.GetUserProfile(context.Background(), username)
+	if err != nil {
+		log.Println("Error in HandleGetUserProfile:", err)
+		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to get user profile")
+	}
+	return RespondWithJSON(user, 200, "", "")
+}
+
+func (c *Controller) HandleResetPassword(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var resetData struct {
+		Email       string `json:"email"`
+		NewPassword string `json:"new_password"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &resetData)
+	if err != nil {
+		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
+	}
+	err = c.service.ResetPassword(context.Background(), resetData.Email, resetData.NewPassword)
+	if err != nil {
+		log.Println("Error in HandleResetPassword:", err)
+		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to reset password")
+	}
+	return RespondWithJSON(map[string]string{"status": "success"}, 200, "", "")
+}
+
+func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var credentials struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Captcha  string `json:"captcha"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &credentials)
+	if err != nil {
+		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
+	}
+	jwt, err := c.service.Login(context.Background(), credentials.Email, credentials.Password)
+	if err != nil {
+		log.Println("Error in HandleLogin:", err)
+		if customErr, ok := err.(*models.CustomError); ok {
+			return RespondWithJSON(nil, 401, customErr.ErrorCode, customErr.Description)
+		} else {
+			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Internal server error")
+		}
+	}
+	return RespondWithJSON(map[string]string{
+		"status":       "success",
+		"access_token": jwt.AccessToken,
+	}, 200, "", "")
+}
+
+func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var userData struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Captcha  string `json:"captcha"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &userData)
+	if err != nil {
+		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
+	}
+	userID, err := c.service.Signup(context.Background(), userData.Email, userData.Password)
+	if err != nil {
+		log.Println("Error in HandleSignup:", err)
+		if customErr, ok := err.(*models.CustomError); ok {
+			return RespondWithJSON(nil, 500, customErr.ErrorCode, customErr.Description)
+		} else {
+			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Internal server error")
+		}
+	}
+	return RespondWithJSON(map[string]interface{}{
+		"status":  "success",
+		"user_id": userID,
+	}, 201, "", "")
+}
+
+func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	email := request.QueryStringParameters["email"]
+	if email == "" {
+		return RespondWithJSON(nil, 400, models.ErrMissingParameter, "Missing email parameter")
+	}
+	_, userID, err := c.service.SendOTP(context.Background(), email)
+	if err != nil {
+		log.Println("Error in HandleSendOTP:", err)
+		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to send OTP")
+	}
+	return RespondWithJSON(map[string]string{
+		"message": "OTP sent successfully",
+		"user_id": userID,
+	}, 200, "", "")
+}
+
+func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	phone := request.QueryStringParameters["phone"]
+	userID := request.QueryStringParameters["userid"]
+	if phone == "" {
+		return RespondWithJSON(nil, 400, models.ErrMissingParameter, "Missing phone parameter")
+	}
+	err := c.service.SendSmsOTP(context.Background(), phone, userID)
+	if err != nil {
+		log.Println("Error in HandleSendSmsOTP:", err)
+		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to send SMS OTP")
+	}
+	return RespondWithJSON(map[string]string{"message": "SMS OTP sent successfully"}, 200, "", "")
+}
+
+func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var requestBody struct {
+		Phone    string `json:"phone"`
+		OTPToken string `json:"otpToken"`
+		UserID   string `json:"userid"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &requestBody)
+	if err != nil {
+		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
+	}
+	valid, err := c.service.VerifySmsOTP(context.Background(), requestBody.Phone, requestBody.OTPToken, requestBody.UserID)
+	if err != nil {
+		log.Println("Error in HandleVerifySmsOTP:", err)
+		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to verify SMS OTP")
+	}
+	if !valid {
+		return RespondWithJSON(nil, 400, models.ErrOTPValidationError, "Invalid SMS OTP")
+	}
+	return RespondWithJSON(map[string]string{"message": "SMS OTP verified successfully"}, 200, "", "")
+}
+
+func (c *Controller) HandleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	var requestBody struct {
+		Email    string `json:"email"`
+		OTPToken string `json:"otpToken"`
+	}
+	err := json.Unmarshal([]byte(request.Body), &requestBody)
+	if err != nil {
+		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
+	}
+	err = c.service.VerifyOTP(context.Background(), requestBody.Email, requestBody.OTPToken)
+	if err != nil {
+		log.Println("Error in HandleVerifyOTP:", err)
+		if customErr, ok := err.(*models.CustomError); ok {
+			return RespondWithJSON(nil, 400, customErr.ErrorCode, customErr.Description)
+		} else {
+			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to verify OTP")
+		}
+	}
+	return RespondWithJSON(map[string]string{"message": "OTP verified successfully"}, 200, "", "")
+}
+
 func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var webhookData map[string]interface{}
 	err := json.Unmarshal([]byte(request.Body), &webhookData)
 	if err != nil {
-		return RespondWithJSON(map[string]string{"error": "Invalid JSON payload"}, 200)
+		return RespondWithJSON(nil, 200, models.ErrInvalidRequestBody, "Invalid JSON payload")
 	}
-
-	fmt.Println("Data", webhookData)
 
 	eventType, ok := webhookData["type"].(string)
 	if !ok {
-		return RespondWithJSON(map[string]string{"error": "Missing or invalid 'type' field"}, 200)
+		return RespondWithJSON(nil, 200, models.ErrInvalidRequestBody, "Missing or invalid 'type' field")
 	}
 
 	switch eventType {
@@ -194,36 +225,38 @@ func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) 
 		var applicantReviewed services.ApplicantReviewed
 		err := json.Unmarshal([]byte(request.Body), &applicantReviewed)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantReviewed' payload"}, 200)
+			return RespondWithJSON(nil, 200, models.ErrInvalidRequestBody, "Invalid 'applicantReviewed' payload")
 		}
-		//err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed.ApplicantID, applicantReviewed.ReviewResult.ReviewAnswer)
 		err = c.kycService.ProcessApplicantReviewed(context.Background(), applicantReviewed)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
+			log.Println("Error in ProcessApplicantReviewed:", err)
+			return RespondWithJSON(nil, 200, models.ErrKYCProcessError, err.Error())
 		}
 	case "applicantCreated":
 		var applicantCreated services.ApplicantCreated
 		err := json.Unmarshal([]byte(request.Body), &applicantCreated)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantCreated' payload"}, 200)
+			return RespondWithJSON(nil, 200, models.ErrInvalidRequestBody, "Invalid 'applicantCreated' payload")
 		}
 		err = c.kycService.ProcessApplicantCreated(context.Background(), applicantCreated)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
+			log.Println("Error in ProcessApplicantCreated:", err)
+			return RespondWithJSON(nil, 200, models.ErrKYCProcessError, err.Error())
 		}
 	case "applicantWorkflowCompleted":
 		var workflowCompleted services.ApplicantWorkflowCompleted
 		err := json.Unmarshal([]byte(request.Body), &workflowCompleted)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": "Invalid 'applicantWorkflowCompleted' payload"}, 200)
+			return RespondWithJSON(nil, 200, models.ErrInvalidRequestBody, "Invalid 'applicantWorkflowCompleted' payload")
 		}
 		err = c.kycService.ProcessWorkflowCompleted(context.Background(), workflowCompleted)
 		if err != nil {
-			return RespondWithJSON(map[string]string{"error": err.Error()}, 200)
+			log.Println("Error in ProcessWorkflowCompleted:", err)
+			return RespondWithJSON(nil, 200, models.ErrKYCProcessError, err.Error())
 		}
 	default:
-		return RespondWithJSON(map[string]string{"error": "Unsupported event type"}, 200)
+		return RespondWithJSON(nil, 200, models.ErrUnsupportedEventType, "Unsupported event type")
 	}
 
-	return RespondWithJSON(map[string]string{"status": "success"}, 200)
+	return RespondWithJSON(map[string]string{"status": "success"}, 200, "", "")
 }

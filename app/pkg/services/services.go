@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
@@ -39,17 +40,24 @@ func NewService(repo repository.UserRepository, options *models.Options) UserSer
 }
 
 func (s *userService) GetUserProfile(ctx context.Context, username string) (*gocloak.User, error) {
-	return s.repo.GetUserByEmail(ctx, username)
+	user, err := s.repo.GetUserByEmail(ctx, username)
+	if err != nil {
+		log.Println("Error in GetUserProfile:", err)
+		return nil, models.NewCustomError(models.ErrUserNotFound, "User not found")
+	}
+	return user, nil
 }
 
 func (s *userService) ResetPassword(ctx context.Context, email, newPassword string) error {
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("failed to get user by email: %v", err)
+		log.Println("Error in ResetPassword - GetUserByEmail:", err)
+		return models.NewCustomError(models.ErrUserNotFound, "User not found")
 	}
 	err = s.repo.SetPassword(ctx, *user.ID, newPassword, false)
 	if err != nil {
-		return fmt.Errorf("failed to reset password: %v", err)
+		log.Println("Error in ResetPassword - SetPassword:", err)
+		return models.NewCustomError(models.ErrInternalServer, "Failed to reset password")
 	}
 	return nil
 }
@@ -57,32 +65,34 @@ func (s *userService) ResetPassword(ctx context.Context, email, newPassword stri
 func (s *userService) Login(ctx context.Context, email, password string) (*gocloak.JWT, error) {
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user by email: %v", err)
+		log.Println("Error in Login - GetUserByEmail:", err)
+		return nil, models.NewCustomError(models.ErrInvalidCredentials, "Invalid credentials")
 	}
 
 	if user.Attributes != nil {
 		if vals, ok := (*user.Attributes)["validated_mail_otp"]; ok {
 			if len(vals) == 0 || vals[0] != "true" {
-				return nil, fmt.Errorf("email OTP not validated")
+				return nil, models.NewCustomError(models.ErrEmailOTPNotValidated, "Email OTP not validated")
 			}
 		} else {
-			return nil, fmt.Errorf("email OTP validation not found")
+			return nil, models.NewCustomError(models.ErrEmailOTPNotValidated, "Email OTP not validated")
 		}
 
 		if vals, ok := (*user.Attributes)["validated_sms_otp"]; ok {
 			if len(vals) == 0 || vals[0] != "true" {
-				return nil, fmt.Errorf("SMS OTP not validated")
+				return nil, models.NewCustomError(models.ErrSMSOTPNotValidated, "SMS OTP not validated")
 			}
 		} else {
-			return nil, fmt.Errorf("SMS OTP validation not found")
+			return nil, models.NewCustomError(models.ErrSMSOTPNotValidated, "SMS OTP not validated")
 		}
 	} else {
-		return nil, fmt.Errorf("user attributes are missing")
+		return nil, models.NewCustomError(models.ErrUserAttributesMissing, "User attributes are missing")
 	}
 
 	jwt, err := s.options.Client.Login(ctx, "web-app", s.options.ClientSecret, s.options.Realm, email, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to login: %v", err)
+		log.Println("Error in Login - Keycloak Login:", err)
+		return nil, models.NewCustomError(models.ErrInvalidCredentials, "Invalid credentials")
 	}
 	return jwt, nil
 }
@@ -90,32 +100,34 @@ func (s *userService) Login(ctx context.Context, email, password string) (*goclo
 func (s *userService) Signup(ctx context.Context, email, password string) (string, error) {
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", fmt.Errorf("failed to create user: %v", err)
+		log.Println("Error in Signup - GetUserByEmail:", err)
+		return "", models.NewCustomError(models.ErrInternalServer, "Failed to create user")
 	}
 
 	if user.Attributes != nil {
 		if vals, ok := (*user.Attributes)["validated_mail_otp"]; ok {
 			if len(vals) == 0 || vals[0] != "true" {
-				return "", fmt.Errorf("email OTP not validated")
+				return "", models.NewCustomError(models.ErrEmailOTPNotValidated, "Email OTP not validated")
 			}
 		} else {
-			return "", fmt.Errorf("email OTP validation not found")
+			return "", models.NewCustomError(models.ErrEmailOTPNotValidated, "Email OTP validation not found")
 		}
 
 		if vals, ok := (*user.Attributes)["validated_sms_otp"]; ok {
 			if len(vals) == 0 || vals[0] != "true" {
-				return "", fmt.Errorf("SMS OTP not validated")
+				return "", models.NewCustomError(models.ErrSMSOTPNotValidated, "SMS OTP not validated")
 			}
 		} else {
-			return "", fmt.Errorf("SMS OTP validation not found")
+			return "", models.NewCustomError(models.ErrSMSOTPNotValidated, "SMS OTP validation not found")
 		}
 	} else {
-		return "", fmt.Errorf("user attributes are missing")
+		return "", models.NewCustomError(models.ErrUserAttributesMissing, "User attributes are missing")
 	}
 
 	err = s.repo.SetPassword(ctx, *user.ID, password, false)
 	if err != nil {
-		return "", fmt.Errorf("failed to set password: %v", err)
+		log.Println("Error in Signup - SetPassword:", err)
+		return "", models.NewCustomError(models.ErrInternalServer, "Failed to set password")
 	}
 	err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 		ID:            user.ID,
@@ -124,7 +136,8 @@ func (s *userService) Signup(ctx context.Context, email, password string) (strin
 		Enabled:       gocloak.BoolP(true),
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to update user attribute: %v", err)
+		log.Println("Error in Signup - UpdateUser:", err)
+		return "", models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 	}
 	return *user.ID, nil
 }
@@ -134,7 +147,8 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 
 	users, err := s.repo.GetUsers(ctx, s.options.Realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get user by email: %v", err)
+		log.Println("Error in SendOTP - GetUsers:", err)
+		return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to get user by email")
 	}
 
 	var userID string
@@ -148,7 +162,8 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 		}
 		userID, err = s.repo.CreateUser(ctx, s.options.Realm, user)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to create user: %v", err)
+			log.Println("Error in SendOTP - CreateUser:", err)
+			return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to create user")
 		}
 	} else {
 		userID = *users[0].ID
@@ -156,7 +171,8 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 
 	userData, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get user by ID: %v", err)
+		log.Println("Error in SendOTP - GetUserByID:", err)
+		return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to get user by ID")
 	}
 	mergedAttributes := mergeAttributes(userData.Attributes, &map[string][]string{
 		"mail_otp":           {otpToken},
@@ -168,12 +184,14 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 		Attributes: &mergedAttributes,
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("failed to update user attribute: %v", err)
+		log.Println("Error in SendOTP - UpdateUser:", err)
+		return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 	}
 
 	err = sendOTPEmail(email, otpToken, s.options.SendgridAPIKey)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to send OTP email: %v", err)
+		log.Println("Error in SendOTP - sendOTPEmail:", err)
+		return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to send OTP email")
 	}
 
 	return otpToken, userID, nil
@@ -182,7 +200,8 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to get user by ID: %v", err)
+		log.Println("Error in SendSmsOTP - GetUserByID:", err)
+		return models.NewCustomError(models.ErrInternalServer, "Failed to get user by ID")
 	}
 	otpToken := generateOTP(6)
 	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
@@ -196,11 +215,13 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 		Attributes: &mergedAttributes,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update user attribute: %v", err)
+		log.Println("Error in SendSmsOTP - UpdateUser:", err)
+		return models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 	}
 	err = sendSmsOTP(phone, otpToken, s.options.TwilioAccountSeed, s.options.TwilioAccountToken, s.options.TwilioSmsSenderNumber)
 	if err != nil {
-		return fmt.Errorf("failed to send SMS OTP: %v", err)
+		log.Println("Error in SendSmsOTP - sendSmsOTP:", err)
+		return models.NewCustomError(models.ErrInternalServer, "Failed to send SMS OTP")
 	}
 	return nil
 }
@@ -208,7 +229,8 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 func (s *userService) VerifySmsOTP(ctx context.Context, phone, otpToken, userID string) (bool, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return false, fmt.Errorf("failed to get user by ID: %v", err)
+		log.Println("Error in VerifySmsOTP - GetUserByID:", err)
+		return false, models.NewCustomError(models.ErrInternalServer, "Failed to get user by ID")
 	}
 	if storedOTP, ok := (*user.Attributes)["sms_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
 		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
@@ -220,7 +242,8 @@ func (s *userService) VerifySmsOTP(ctx context.Context, phone, otpToken, userID 
 			Attributes: &mergedAttributes,
 		})
 		if err != nil {
-			return false, fmt.Errorf("failed to update user attribute: %v", err)
+			log.Println("Error in VerifySmsOTP - UpdateUser:", err)
+			return false, models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 		}
 		return true, nil
 	}
@@ -230,7 +253,8 @@ func (s *userService) VerifySmsOTP(ctx context.Context, phone, otpToken, userID 
 func (s *userService) VerifyOTP(ctx context.Context, email, otpToken string) error {
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("failed to get user by email: %v", err)
+		log.Println("Error in VerifyOTP - GetUserByEmail:", err)
+		return models.NewCustomError(models.ErrUserNotFound, "User not found")
 	}
 	if storedOTP, ok := (*user.Attributes)["mail_otp"]; ok && len(storedOTP) > 0 && storedOTP[0] == otpToken {
 		mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
@@ -242,11 +266,12 @@ func (s *userService) VerifyOTP(ctx context.Context, email, otpToken string) err
 			Attributes: &mergedAttributes,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to update user attribute: %v", err)
+			log.Println("Error in VerifyOTP - UpdateUser:", err)
+			return models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 		}
 		return nil
 	}
-	return fmt.Errorf("invalid OTP token")
+	return models.NewCustomError(models.ErrOTPValidationError, "Invalid OTP token")
 }
 
 func generateOTP(length int) string {

@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/dedoai/ddai-api-user/config"
+	"github.com/dedoai/ddai-api-user/models"
 	"github.com/dedoai/ddai-api-user/pkg/controller"
 	"github.com/dedoai/ddai-api-user/pkg/repository"
 	"github.com/dedoai/ddai-api-user/pkg/services"
@@ -43,18 +44,12 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			return ctrl.HandleSumsubWebhook(request)
 		}
 	case "OPTIONS":
-		return controller.RespondWithJSON(nil, 200)
+		return controller.RespondWithJSON(nil, 200, "", "")
 	default:
-		return events.APIGatewayProxyResponse{
-			StatusCode: 404,
-			Body:       `{"error": "Endpoint not found"}`,
-		}, nil
+		return controller.RespondWithJSON(nil, 404, models.ErrEndpointNotFound, "Endpoint not found")
 	}
 
-	return events.APIGatewayProxyResponse{
-		StatusCode: 404,
-		Body:       `{"error": "Endpoint not found"}`,
-	}, nil
+	return controller.RespondWithJSON(nil, 404, models.ErrEndpointNotFound, "Endpoint not found")
 }
 
 func main() {
