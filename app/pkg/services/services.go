@@ -145,11 +145,11 @@ func (s *userService) Signup(ctx context.Context, email, password string) (strin
 func (s *userService) SendOTP(ctx context.Context, email string) (string, string, error) {
 	otpToken := generateOTP(6)
 
-	users, err := s.repo.GetUsers(ctx, s.options.Realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
-	if err != nil {
-		log.Println("Error in SendOTP - GetUsers:", err)
-		return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to get user by email")
-	}
+	users, _ := s.repo.GetUsers(ctx, s.options.Realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
+	// if err != nil {
+	// 	log.Println("Error in SendOTP - GetUsers:", err)
+	// 	return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to get user by email")
+	// }
 
 	var userID string
 	if len(users) == 0 {
@@ -160,6 +160,7 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 				"draft": {"true"},
 			},
 		}
+		var err error
 		userID, err = s.repo.CreateUser(ctx, s.options.Realm, user)
 		if err != nil {
 			log.Println("Error in SendOTP - CreateUser:", err)
