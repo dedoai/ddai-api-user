@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -106,8 +107,10 @@ func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.
 		}
 	}
 	return RespondWithJSON(map[string]string{
-		"status":       "success",
-		"access_token": jwt.AccessToken,
+		"status":        "success",
+		"access_token":  jwt.AccessToken,
+		"refresh_token": jwt.RefreshToken,
+		"expires_in":    strconv.Itoa(jwt.ExpiresIn),
 	}, 200, "", "")
 }
 

@@ -146,10 +146,6 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 	otpToken := generateOTP(6)
 
 	users, _ := s.repo.GetUsers(ctx, s.options.Realm, gocloak.GetUsersParams{Email: gocloak.StringP(email)})
-	// if err != nil {
-	// 	log.Println("Error in SendOTP - GetUsers:", err)
-	// 	return "", "", models.NewCustomError(models.ErrInternalServer, "Failed to get user by email")
-	// }
 
 	var userID string
 	if len(users) == 0 {
