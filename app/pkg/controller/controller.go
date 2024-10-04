@@ -156,7 +156,7 @@ func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (event
 }
 
 func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	phone := request.QueryStringParameters["phone"]
+	phone := request.QueryStringParameters["phoneNumber"]
 	userID := request.QueryStringParameters["userid"]
 	if phone == "" {
 		return RespondWithJSON(nil, 400, models.ErrMissingParameter, "Missing phone parameter")
@@ -171,7 +171,7 @@ func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (ev
 
 func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var requestBody struct {
-		Phone    string `json:"phone"`
+		Phone    string `json:"phoneNumber"`
 		OTPToken string `json:"otpToken"`
 		UserID   string `json:"userid"`
 	}

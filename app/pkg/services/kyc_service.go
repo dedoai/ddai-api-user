@@ -71,7 +71,7 @@ type ApplicantDetails struct {
 	SourceKey         string          `json:"sourceKey"`
 	Info              ApplicantInfo   `json:"info"`
 	Email             string          `json:"email"`
-	Phone             string          `json:"phone"`
+	PhoneNumber       string          `json:"phoneNumber"`
 	ApplicantPlatform string          `json:"applicantPlatform"`
 	Questionnaires    []Questionnaire `json:"questionnaires"`
 	RiskLabels        RiskLabels      `json:"riskLabels"`
@@ -250,7 +250,7 @@ func (s *kycService) ProcessApplicantReviewed(ctx context.Context, applicant App
 
 	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
 		"kyc_status":     {applicant.ReviewStatus},
-		"phone":          {applicantDetails.Phone},
+		"phoneNumber":    {applicantDetails.PhoneNumber},
 		"dob":            {applicantDetails.Info.DOB},
 		"gender":         {applicantDetails.Info.Gender},
 		"place_of_birth": {applicantDetails.Info.PlaceOfBirth},
