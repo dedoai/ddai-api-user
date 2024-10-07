@@ -194,7 +194,7 @@ func (s *userService) SendOTP(ctx context.Context, email string) (string, string
 	return otpToken, userID, nil
 }
 
-func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) error {
+func (s *userService) SendSmsOTP(ctx context.Context, phoneNumber, userID string) error {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		log.Println("Error in SendSmsOTP - GetUserByID:", err)
@@ -204,7 +204,7 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 	mergedAttributes := mergeAttributes(user.Attributes, &map[string][]string{
 		"sms_otp":           {otpToken},
 		"validated_sms_otp": {"false"},
-		"phone":             {phone},
+		"phone":             {phoneNumber},
 	})
 	err = s.repo.UpdateUser(ctx, s.options.Realm, gocloak.User{
 		ID:         &userID,
@@ -215,9 +215,10 @@ func (s *userService) SendSmsOTP(ctx context.Context, phone, userID string) erro
 		log.Println("Error in SendSmsOTP - UpdateUser:", err)
 		return models.NewCustomError(models.ErrInternalServer, "Failed to update user")
 	}
-	err = sendSmsOTP(phone, otpToken, s.options.TwilioAccountSeed, s.options.TwilioAccountToken, s.options.TwilioSmsSenderNumber)
+
+	err = sendSmsOTP(phoneNumber, otpToken, s.options.TwilioAccountSeed, s.options.TwilioAccountToken, s.options.TwilioSmsSenderNumber)
 	if err != nil {
-		log.Println("Error in SendSmsOTP - sendSmsOTP:", err)
+		fmt.Println("Error in SendSmsOTP - sendSmsOTP:", err)
 		return models.NewCustomError(models.ErrInternalServer, "Failed to send SMS OTP")
 	}
 	return nil
@@ -307,6 +308,7 @@ func sendOTPEmail(email, otpToken, sendgridAPIKey string) error {
 }
 
 func sendSmsOTP(phone, otpToken, twilioAccountSID, twilioAuthToken, twilioPhoneNumber string) error {
+	fmt.Println("PHONE", phone)
 	client := twilio.NewRestClientWithParams(twilio.ClientParams{
 		Username: twilioAccountSID,
 		Password: twilioAuthToken,

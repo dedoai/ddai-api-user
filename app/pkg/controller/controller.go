@@ -156,12 +156,12 @@ func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (event
 }
 
 func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	phone := request.QueryStringParameters["phoneNumber"]
+	phoneNumber := request.QueryStringParameters["phoneNumber"]
 	userID := request.QueryStringParameters["userid"]
-	if phone == "" {
+	if phoneNumber == "" {
 		return RespondWithJSON(nil, 400, models.ErrMissingParameter, "Missing phone parameter")
 	}
-	err := c.service.SendSmsOTP(context.Background(), phone, userID)
+	err := c.service.SendSmsOTP(context.Background(), phoneNumber, userID)
 	if err != nil {
 		log.Println("Error in HandleSendSmsOTP:", err)
 		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to send SMS OTP")
@@ -171,15 +171,15 @@ func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (ev
 
 func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var requestBody struct {
-		Phone    string `json:"phoneNumber"`
-		OTPToken string `json:"otpToken"`
-		UserID   string `json:"userid"`
+		PhoneNumber string `json:"phoneNumber"`
+		OTPToken    string `json:"otpToken"`
+		UserID      string `json:"userid"`
 	}
 	err := json.Unmarshal([]byte(request.Body), &requestBody)
 	if err != nil {
 		return RespondWithJSON(nil, 400, models.ErrInvalidRequestBody, "Invalid request body")
 	}
-	valid, err := c.service.VerifySmsOTP(context.Background(), requestBody.Phone, requestBody.OTPToken, requestBody.UserID)
+	valid, err := c.service.VerifySmsOTP(context.Background(), requestBody.PhoneNumber, requestBody.OTPToken, requestBody.UserID)
 	if err != nil {
 		log.Println("Error in HandleVerifySmsOTP:", err)
 		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to verify SMS OTP")
