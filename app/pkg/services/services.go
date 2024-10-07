@@ -308,7 +308,6 @@ func sendOTPEmail(email, otpToken, sendgridAPIKey string) error {
 }
 
 func sendSmsOTP(phone, otpToken, twilioAccountSID, twilioAuthToken, twilioPhoneNumber string) error {
-	fmt.Println("PHONE", phone)
 	client := twilio.NewRestClientWithParams(twilio.ClientParams{
 		Username: twilioAccountSID,
 		Password: twilioAuthToken,

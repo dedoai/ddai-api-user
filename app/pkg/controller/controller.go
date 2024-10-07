@@ -2,10 +2,13 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"log"
-	"strconv"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/dedoai/ddai-api-user/models"
@@ -31,7 +34,7 @@ type IResponse struct {
 	Data        interface{} `json:"data,omitempty"`
 }
 
-func RespondWithJSON(data interface{}, statusCode int, errorCode string, description string) (events.APIGatewayProxyResponse, error) {
+func RespondWithJSON(data interface{}, statusCode int, errorCode string, description string, headers ...map[string]string) (events.APIGatewayProxyResponse, error) {
 	response := IResponse{
 		StatusCode:  statusCode,
 		ErrorCode:   errorCode,
@@ -47,16 +50,25 @@ func RespondWithJSON(data interface{}, statusCode int, errorCode string, descrip
 			Body:       `{"statusCode":500,"errorCode":"INTERNAL_SERVER_ERROR","description":"Internal Server Error"}`,
 		}, nil
 	}
+
+	defaultHeaders := map[string]string{
+		"Content-Type":                     "application/json",
+		"Access-Control-Allow-Origin":      "*",
+		"Access-Control-Allow-Methods":     "GET,POST,OPTIONS",
+		"Access-Control-Allow-Headers":     "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+		"Access-Control-Allow-Credentials": "true",
+	}
+
+	if len(headers) > 0 {
+		for key, value := range headers[0] {
+			defaultHeaders[key] = value
+		}
+	}
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: statusCode,
-		Headers: map[string]string{
-			"Content-Type":                     "application/json",
-			"Access-Control-Allow-Origin":      "*",
-			"Access-Control-Allow-Methods":     "GET,POST,OPTIONS",
-			"Access-Control-Allow-Headers":     "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-			"Access-Control-Allow-Credentials": "true",
-		},
-		Body: string(body),
+		Headers:    defaultHeaders,
+		Body:       string(body),
 	}, nil
 }
 
@@ -84,7 +96,7 @@ func (c *Controller) HandleResetPassword(request events.APIGatewayProxyRequest) 
 		log.Println("Error in HandleResetPassword:", err)
 		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to reset password")
 	}
-	return RespondWithJSON(map[string]string{"status": "success"}, 200, "", "")
+	return RespondWithJSON(map[string]string{"status": "success"}, 200, "", "Reset password success")
 }
 
 func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -106,12 +118,38 @@ func (c *Controller) HandleLogin(request events.APIGatewayProxyRequest) (events.
 			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Internal server error")
 		}
 	}
-	return RespondWithJSON(map[string]string{
-		"status":        "success",
+
+	sessionCookie := &http.Cookie{
+		Name:     "session_id",
+		Value:    generateSessionID(),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Now().Add(24 * time.Hour),
+	}
+
+	headers := map[string]string{
+		"Set-Cookie": sessionCookie.String(),
+	}
+
+	data := map[string]interface{}{
 		"access_token":  jwt.AccessToken,
 		"refresh_token": jwt.RefreshToken,
-		"expires_in":    strconv.Itoa(jwt.ExpiresIn),
-	}, 200, "", "")
+		"expires_in":    jwt.ExpiresIn,
+	}
+	return RespondWithJSON(data, 200, "", "Login successful", headers)
+}
+
+func generateSessionID() string {
+	randomBytes := make([]byte, 32)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		panic(err)
+	}
+
+	sessionID := base64.URLEncoding.EncodeToString(randomBytes)
+
+	return sessionID
 }
 
 func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -133,10 +171,10 @@ func (c *Controller) HandleSignup(request events.APIGatewayProxyRequest) (events
 			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Internal server error")
 		}
 	}
-	return RespondWithJSON(map[string]interface{}{
-		"status":  "success",
+	data := map[string]interface{}{
 		"user_id": userID,
-	}, 201, "", "")
+	}
+	return RespondWithJSON(data, 200, "", "User signed successfully")
 }
 
 func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -149,10 +187,10 @@ func (c *Controller) HandleSendOTP(request events.APIGatewayProxyRequest) (event
 		log.Println("Error in HandleSendOTP:", err)
 		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to send OTP")
 	}
-	return RespondWithJSON(map[string]string{
-		"message": "OTP sent successfully",
+	data := map[string]interface{}{
 		"user_id": userID,
-	}, 200, "", "")
+	}
+	return RespondWithJSON(data, 200, "", "Email otp sent successfully")
 }
 
 func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -166,7 +204,7 @@ func (c *Controller) HandleSendSmsOTP(request events.APIGatewayProxyRequest) (ev
 		log.Println("Error in HandleSendSmsOTP:", err)
 		return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to send SMS OTP")
 	}
-	return RespondWithJSON(map[string]string{"message": "SMS OTP sent successfully"}, 200, "", "")
+	return RespondWithJSON(nil, 200, "", "SMS otp sent successfully")
 }
 
 func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -187,7 +225,11 @@ func (c *Controller) HandleVerifySmsOTP(request events.APIGatewayProxyRequest) (
 	if !valid {
 		return RespondWithJSON(nil, 400, models.ErrOTPValidationError, "Invalid SMS OTP")
 	}
-	return RespondWithJSON(map[string]string{"message": "SMS OTP verified successfully"}, 200, "", "")
+
+	data := map[string]interface{}{
+		"user_id": requestBody.UserID,
+	}
+	return RespondWithJSON(data, 200, "", "SMS otp verified successfully")
 }
 
 func (c *Controller) HandleVerifyOTP(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -208,7 +250,7 @@ func (c *Controller) HandleVerifyOTP(request events.APIGatewayProxyRequest) (eve
 			return RespondWithJSON(nil, 500, models.ErrInternalServer, "Failed to verify OTP")
 		}
 	}
-	return RespondWithJSON(map[string]string{"message": "OTP verified successfully"}, 200, "", "")
+	return RespondWithJSON(nil, 200, "", "Email otp verified successfully")
 }
 
 func (c *Controller) HandleSumsubWebhook(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
